@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrustRails Widget Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .header {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      color: #333;
+    }
+    .description {
+      color: #666;
+      margin: 0;
+    }
+    .demo-section {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .demo-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    .integration-code {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 14px;
+      overflow-x: auto;
+    }
+    .code-label {
+      font-size: 12px;
+      color: #6c757d;
+      margin-bottom: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e9ecef;
+    }
+    .tab {
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      color: #6c757d;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
+    .tab.active {
+      color: #1a73e8;
+      border-bottom-color: #1a73e8;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>TrustRails Widget Demo</h1>
+      <p class="description">Test the embeddable 401(k) rollover widget in different configurations</p>
+    </div>
+
+    <!-- Basic Implementation -->
+    <div class="demo-section">
+      <div class="demo-title">Basic Widget Implementation</div>
+      <trustrails-widget
+        partner-id="demo-partner"
+        api-key="demo-key-12345"
+        environment="sandbox">
+      </trustrails-widget>
+
+      <div class="integration-code">
+        <div class="code-label">HTML Integration</div>
+        <pre>&lt;!-- Add to your HTML --&gt;
+&lt;script src="https://cdn.trustrails.com/widget/v1/trustrails-widget.js"&gt;&lt;/script&gt;
+
+&lt;trustrails-widget
+  partner-id="your-partner-id"
+  api-key="your-api-key"
+  environment="production"&gt;
+&lt;/trustrails-widget&gt;</pre>
+      </div>
+    </div>
+
+    <!-- Custom Themed Widget -->
+    <div class="demo-section">
+      <div class="demo-title">Custom Themed Widget</div>
+      <trustrails-widget
+        id="themed-widget"
+        partner-id="demo-partner"
+        api-key="demo-key-12345"
+        environment="sandbox">
+      </trustrails-widget>
+
+      <div class="integration-code">
+        <div class="code-label">JavaScript Configuration</div>
+        <pre>const widget = document.querySelector('#themed-widget');
+widget.theme = {
+  primaryColor: '#00875a',
+  fontFamily: 'Georgia, serif',
+  borderRadius: '16px'
+};</pre>
+      </div>
+    </div>
+
+    <!-- Integration Examples -->
+    <div class="demo-section">
+      <div class="demo-title">Integration Examples</div>
+
+      <div class="tabs">
+        <button class="tab active" onclick="showTab('react')">React</button>
+        <button class="tab" onclick="showTab('vue')">Vue</button>
+        <button class="tab" onclick="showTab('angular')">Angular</button>
+        <button class="tab" onclick="showTab('wordpress')">WordPress</button>
+      </div>
+
+      <div id="react" class="tab-content active">
+        <div class="integration-code">
+          <pre>import { useEffect, useRef } from 'react';
+
+function RolloverWidget({ partnerId, apiKey }) {
+  const widgetRef = useRef();
+
+  useEffect(() => {
+    // Load widget script
+    const script = document.createElement('script');
+    script.src = 'https://cdn.trustrails.com/widget/v1/trustrails-widget.js';
+    document.head.appendChild(script);
+
+    // Listen for widget events
+    if (widgetRef.current) {
+      widgetRef.current.addEventListener('trustrails-start', (e) => {
+        console.log('Rollover started:', e.detail);
+      });
+    }
+  }, []);
+
+  return (
+    &lt;trustrails-widget
+      ref={widgetRef}
+      partner-id={partnerId}
+      api-key={apiKey}
+      environment="production"&gt;
+    &lt;/trustrails-widget&gt;
+  );
+}</pre>
+        </div>
+      </div>
+
+      <div id="vue" class="tab-content">
+        <div class="integration-code">
+          <pre>&lt;template&gt;
+  &lt;trustrails-widget
+    :partner-id="partnerId"
+    :api-key="apiKey"
+    environment="production"
+    @trustrails-start="handleStart"&gt;
+  &lt;/trustrails-widget&gt;
+&lt;/template&gt;
+
+&lt;script&gt;
+export default {
+  props: ['partnerId', 'apiKey'],
+  mounted() {
+    // Load widget script
+    const script = document.createElement('script');
+    script.src = 'https://cdn.trustrails.com/widget/v1/trustrails-widget.js';
+    document.head.appendChild(script);
+  },
+  methods: {
+    handleStart(event) {
+      console.log('Rollover started:', event.detail);
+    }
+  }
+}
+&lt;/script&gt;</pre>
+        </div>
+      </div>
+
+      <div id="angular" class="tab-content">
+        <div class="integration-code">
+          <pre>import { Component, OnInit } from '@angular/core';
+
+@Component({
+  selector: 'app-rollover',
+  template: `
+    &lt;trustrails-widget
+      [attr.partner-id]="partnerId"
+      [attr.api-key]="apiKey"
+      environment="production"
+      (trustrails-start)="handleStart($event)"&gt;
+    &lt;/trustrails-widget&gt;
+  `
+})
+export class RolloverComponent implements OnInit {
+  partnerId = 'your-partner-id';
+  apiKey = 'your-api-key';
+
+  ngOnInit() {
+    // Load widget script
+    const script = document.createElement('script');
+    script.src = 'https://cdn.trustrails.com/widget/v1/trustrails-widget.js';
+    document.head.appendChild(script);
+  }
+
+  handleStart(event: CustomEvent) {
+    console.log('Rollover started:', event.detail);
+  }
+}</pre>
+        </div>
+      </div>
+
+      <div id="wordpress" class="tab-content">
+        <div class="integration-code">
+          <pre>&lt;!-- WordPress Shortcode --&gt;
+[trustrails_widget partner_id="your-partner-id" api_key="your-api-key"]
+
+&lt;!-- PHP Plugin Code --&gt;
+&lt;?php
+function trustrails_widget_shortcode($atts) {
+  $atts = shortcode_atts([
+    'partner_id' => '',
+    'api_key' => '',
+    'environment' => 'production'
+  ], $atts);
+
+  // Enqueue widget script
+  wp_enqueue_script(
+    'trustrails-widget',
+    'https://cdn.trustrails.com/widget/v1/trustrails-widget.js',
+    [], '1.0.0', true
+  );
+
+  return sprintf(
+    '&lt;trustrails-widget partner-id="%s" api-key="%s" environment="%s"&gt;&lt;/trustrails-widget&gt;',
+    esc_attr($atts['partner_id']),
+    esc_attr($atts['api_key']),
+    esc_attr($atts['environment'])
+  );
+}
+add_shortcode('trustrails_widget', 'trustrails_widget_shortcode');
+?&gt;</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import the widget from local development
+    import '@trustrails/rollover-widget';
+
+    // Apply custom theme to second widget
+    const themedWidget = document.querySelector('#themed-widget');
+    if (themedWidget) {
+      themedWidget.theme = {
+        primaryColor: '#00875a',
+        fontFamily: 'Georgia, serif',
+        borderRadius: '16px'
+      };
+    }
+
+    // Tab switching functionality
+    window.showTab = function(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+
+      // Show selected tab
+      document.getElementById(tabName).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    // Listen for widget events
+    document.addEventListener('trustrails-start', (event) => {
+      console.log('Widget started rollover:', event.detail);
+    });
+  </script>
+</body>
+</html>
