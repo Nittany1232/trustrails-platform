@@ -30,6 +30,8 @@ export class TrustRailsWidget extends LitElement {
   @state() private isAuthenticated = false;
   @state() private error: string | null = null;
   @state() private currentStep = 0;
+  @state() private bearerToken: string | null = null;
+  @state() private sessionId: string | null = null;
 
   // Scoped styles - won't affect parent page
   static override styles = css`
@@ -247,8 +249,8 @@ export class TrustRailsWidget extends LitElement {
 
   private async authenticate() {
     const apiUrl = this.environment === 'production'
-      ? 'https://api.trustrails.com/v1/widget/auth'
-      : 'https://sandbox-api.trustrails.com/v1/widget/auth';
+      ? 'https://api.trustrails.com/api/widget/auth'
+      : 'http://localhost:3000/api/widget/auth';
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -264,20 +266,101 @@ export class TrustRailsWidget extends LitElement {
     });
 
     if (!response.ok) {
-      throw new Error(`Authentication failed: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Authentication failed: ${response.statusText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+
+    // Store bearer token and session info
+    this.bearerToken = data.bearer_token;
+    this.sessionId = data.session_id;
+
+    // Store in session storage for persistence
+    if (typeof sessionStorage !== 'undefined' && this.bearerToken && this.sessionId) {
+      sessionStorage.setItem('trustrails_bearer_token', this.bearerToken);
+      sessionStorage.setItem('trustrails_session_id', this.sessionId);
+    }
+
+    return data;
   }
 
   private handleStartRollover() {
     this.currentStep = 1;
     // Dispatch custom event that parent can listen to
     this.dispatchEvent(new CustomEvent('trustrails-start', {
-      detail: { partnerId: this.partnerId },
+      detail: { partnerId: this.partnerId, sessionId: this.sessionId },
       bubbles: true,
       composed: true
     }));
+  }
+
+  async createAccount(authType: 'oauth' | 'email', data: any) {
+    if (!this.bearerToken) {
+      throw new Error('No bearer token available');
+    }
+
+    const apiUrl = this.environment === 'production'
+      ? 'https://api.trustrails.com/api/widget/create-account'
+      : 'http://localhost:3000/api/widget/create-account';
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.bearerToken}`
+      },
+      body: JSON.stringify({
+        auth_type: authType,
+        ...data
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Account creation failed: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    // Dispatch event for account created
+    this.dispatchEvent(new CustomEvent('trustrails-account-created', {
+      detail: {
+        userId: result.user.id,
+        isNewUser: result.is_new_user,
+        nextSteps: result.next_steps
+      },
+      bubbles: true,
+      composed: true
+    }));
+
+    return result;
+  }
+
+  async makeAPICall(endpoint: string, options: RequestInit = {}) {
+    if (!this.bearerToken) {
+      throw new Error('Not authenticated');
+    }
+
+    const apiUrl = this.environment === 'production'
+      ? `https://api.trustrails.com${endpoint}`
+      : `http://localhost:3000${endpoint}`;
+
+    const response = await fetch(apiUrl, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.bearerToken}`,
+        ...options.headers
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `API call failed: ${response.statusText}`);
+    }
+
+    return response.json();
   }
 
   protected override updated(changedProperties: PropertyValues) {

@@ -7,7 +7,7 @@
     "FIREBASE_*",
     "GCP_*"
   ],
-  "pipeline": {
+  "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": [
