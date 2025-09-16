@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrustRails Widget - Disabled States Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .header {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      color: #333;
+    }
+    .description {
+      color: #666;
+      margin: 0;
+    }
+    .demo-section {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .demo-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 8px 16px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background: #f5f5f5;
+    }
+    .btn.disabled-reason {
+      background: #fee2e2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+    .btn.disabled-reason:hover {
+      background: #fecaca;
+    }
+    .btn.enable {
+      background: #dcfce7;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+    .btn.enable:hover {
+      background: #bbf7d0;
+    }
+    .widget-container {
+      border: 2px dashed #e5e7eb;
+      border-radius: 8px;
+      padding: 20px;
+      background: #fafafa;
+    }
+    .info-box {
+      background: #eff6ff;
+      border: 1px solid #dbeafe;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .info-box h3 {
+      margin: 0 0 8px 0;
+      color: #1e40af;
+      font-size: 16px;
+    }
+    .info-box p {
+      margin: 0;
+      color: #3730a3;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .code-snippet {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 12px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+      margin-top: 12px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>TrustRails Widget - Disabled States Demo</h1>
+      <p class="description">Test the user-friendly error messages displayed when the widget is disabled due to various issues</p>
+    </div>
+
+    <div class="info-box">
+      <h3>About Disabled States</h3>
+      <p>When a partner's widget is disabled due to payment, compliance, or other issues, end users see friendly messages instead of technical errors. This preserves trust while clearly communicating the situation and next steps.</p>
+    </div>
+
+    <!-- Interactive Demo -->
+    <div class="demo-section">
+      <div class="demo-title">Interactive Disabled States Demo</div>
+
+      <div class="controls">
+        <button class="btn enable" onclick="enableWidget()">✅ Enable Widget</button>
+        <button class="btn disabled-reason" onclick="setDisabled('PAYMENT_REQUIRED')">💳 Payment Required</button>
+        <button class="btn disabled-reason" onclick="setDisabled('COMPLIANCE_VIOLATION')">⚖️ Compliance Issue</button>
+        <button class="btn disabled-reason" onclick="setDisabled('MAINTENANCE')">🔧 Maintenance</button>
+        <button class="btn disabled-reason" onclick="setDisabled('ACCOUNT_SUSPENDED')">⏸️ Account Suspended</button>
+        <button class="btn disabled-reason" onclick="setDisabled('RATE_LIMIT_EXCEEDED')">🚦 Rate Limited</button>
+      </div>
+
+      <div class="widget-container">
+        <trustrails-widget
+          id="demo-widget"
+          partner-id="demo-partner"
+          api-key="demo-key"
+          environment="sandbox">
+        </trustrails-widget>
+      </div>
+
+      <div class="code-snippet">
+        <strong>Current State:</strong> <span id="current-state">Enabled</span><br>
+        <strong>API Usage:</strong> <code>widget.setDisabled('PAYMENT_REQUIRED')</code>
+      </div>
+    </div>
+
+    <!-- Message Examples -->
+    <div class="demo-section">
+      <div class="demo-title">Message Examples</div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+
+        <!-- Payment Required -->
+        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+          <h4 style="margin: 0 0 8px 0; color: #374151;">Payment Required</h4>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; text-align: center;">
+            <div style="width: 48px; height: 48px; margin: 0 auto 16px; background: #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: white;">⚠</div>
+            <h3 style="margin: 0 0 12px 0; font-size: 20px; color: #334155;">Service Temporarily Unavailable</h3>
+            <p style="margin: 0 0 20px 0; color: #64748b; line-height: 1.5;">We're currently updating this service. Please check back in a few minutes, or contact your HR team for assistance.</p>
+            <div style="display: inline-flex; align-items: center; color: #1a73e8; font-weight: 500; font-size: 14px; gap: 6px; padding: 8px 16px; border: 1px solid #1a73e8; border-radius: 6px;">Need help? Contact support →</div>
+          </div>
+        </div>
+
+        <!-- Compliance Violation -->
+        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+          <h4 style="margin: 0 0 8px 0; color: #374151;">Compliance Issue</h4>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; text-align: center;">
+            <div style="width: 48px; height: 48px; margin: 0 auto 16px; background: #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: white;">⚠</div>
+            <h3 style="margin: 0 0 12px 0; font-size: 20px; color: #334155;">Service Temporarily Unavailable</h3>
+            <p style="margin: 0 0 20px 0; color: #64748b; line-height: 1.5;">This feature is currently being updated to serve you better. Please try again later or reach out to your benefits administrator.</p>
+            <div style="display: inline-flex; align-items: center; color: #1a73e8; font-weight: 500; font-size: 14px; gap: 6px; padding: 8px 16px; border: 1px solid #1a73e8; border-radius: 6px;">Contact your benefits team →</div>
+          </div>
+        </div>
+
+        <!-- Maintenance -->
+        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+          <h4 style="margin: 0 0 8px 0; color: #374151;">Scheduled Maintenance</h4>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; text-align: center;">
+            <div style="width: 48px; height: 48px; margin: 0 auto 16px; background: #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: white;">⚠</div>
+            <h3 style="margin: 0 0 12px 0; font-size: 20px; color: #334155;">Scheduled Maintenance</h3>
+            <p style="margin: 0 0 20px 0; color: #64748b; line-height: 1.5;">We're performing routine maintenance to improve your experience. The service will be back online shortly.</p>
+            <div style="display: inline-flex; align-items: center; color: #1a73e8; font-weight: 500; font-size: 14px; gap: 6px; padding: 8px 16px; border: 1px solid #1a73e8; border-radius: 6px;">Check service status →</div>
+          </div>
+        </div>
+
+        <!-- Account Suspended -->
+        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+          <h4 style="margin: 0 0 8px 0; color: #374151;">Account Suspended</h4>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; text-align: center;">
+            <div style="width: 48px; height: 48px; margin: 0 auto 16px; background: #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: white;">⚠</div>
+            <h3 style="margin: 0 0 12px 0; font-size: 20px; color: #334155;">Service Review in Progress</h3>
+            <p style="margin: 0 0 20px 0; color: #64748b; line-height: 1.5;">Your rollover service is temporarily unavailable while we review your account. This usually takes 1-2 business days.</p>
+            <div style="display: inline-flex; align-items: center; color: #1a73e8; font-weight: 500; font-size: 14px; gap: 6px; padding: 8px 16px; border: 1px solid #1a73e8; border-radius: 6px;">Questions? Contact support →</div>
+          </div>
+        </div>
+
+        <!-- Rate Limited -->
+        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+          <h4 style="margin: 0 0 8px 0; color: #374151;">Rate Limited</h4>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; text-align: center;">
+            <div style="width: 48px; height: 48px; margin: 0 auto 16px; background: #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: white;">⚠</div>
+            <h3 style="margin: 0 0 12px 0; font-size: 20px; color: #334155;">Too Many Requests</h3>
+            <p style="margin: 0 0 20px 0; color: #64748b; line-height: 1.5;">You've reached the maximum number of requests. Please wait a few minutes before trying again.</p>
+            <div style="display: inline-flex; align-items: center; color: #1a73e8; font-weight: 500; font-size: 14px; gap: 6px; padding: 8px 16px; border: 1px solid #1a73e8; border-radius: 6px;">Need immediate help? Contact support →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Implementation Guide -->
+    <div class="demo-section">
+      <div class="demo-title">Implementation Guide</div>
+
+      <h4>Automatic Error Handling</h4>
+      <p>The widget automatically detects disabled states from API responses:</p>
+      <div class="code-snippet">
+// HTTP Status Codes that trigger disabled states:
+// 402 Payment Required → PAYMENT_REQUIRED
+// 403 Forbidden → COMPLIANCE_VIOLATION or ACCOUNT_SUSPENDED
+// 429 Too Many Requests → RATE_LIMIT_EXCEEDED
+// 503 Service Unavailable → MAINTENANCE
+
+// Custom error codes in response body:
+// "SUBSCRIPTION_EXPIRED" → PAYMENT_REQUIRED
+// "POLICY_VIOLATION" → COMPLIANCE_VIOLATION
+// "PARTNER_SUSPENDED" → ACCOUNT_SUSPENDED
+// "QUOTA_EXCEEDED" → RATE_LIMIT_EXCEEDED
+      </div>
+
+      <h4>Manual Control (Testing & Development)</h4>
+      <p>You can also manually set disabled states for testing:</p>
+      <div class="code-snippet">
+const widget = document.querySelector('trustrails-widget');
+
+// Disable with specific reason
+widget.setDisabled('PAYMENT_REQUIRED');
+
+// Enable widget
+widget.setDisabled(null);
+
+// Check if disabled
+if (widget.isWidgetDisabled()) {
+  console.log('Disabled reason:', widget.getDisabledReason());
+}
+      </div>
+
+      <h4>Customizing Messages</h4>
+      <p>Messages are designed to be empathetic and avoid technical jargon while maintaining user trust. They:</p>
+      <ul>
+        <li><strong>Avoid blame:</strong> Use neutral language like "temporarily unavailable"</li>
+        <li><strong>Provide timeframes:</strong> Set expectations like "1-2 business days"</li>
+        <li><strong>Offer alternatives:</strong> Direct users to HR teams or support</li>
+        <li><strong>Maintain trust:</strong> Frame issues as updates or routine maintenance</li>
+      </ul>
+    </div>
+  </div>
+
+  <script type="module">
+    import '@trustrails/rollover-widget';
+
+    let widget;
+    const currentStateElement = document.getElementById('current-state');
+
+    // Wait for widget to load
+    document.addEventListener('DOMContentLoaded', () => {
+      widget = document.getElementById('demo-widget');
+    });
+
+    // Global functions for button controls
+    window.setDisabled = function(reason) {
+      if (widget) {
+        widget.setDisabled(reason);
+        currentStateElement.textContent = `Disabled (${reason})`;
+        console.log('Widget disabled with reason:', reason);
+      }
+    };
+
+    window.enableWidget = function() {
+      if (widget) {
+        widget.setDisabled(null);
+        currentStateElement.textContent = 'Enabled';
+        console.log('Widget enabled');
+      }
+    };
+
+    // Listen for widget events
+    document.addEventListener('trustrails-start', (event) => {
+      console.log('Widget started rollover:', event.detail);
+      alert('Rollover process started! (This would normally redirect to the rollover flow)');
+    });
+  </script>
+</body>
+</html>

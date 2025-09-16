@@ -43,6 +43,37 @@ import { customElement, property, state } from 'lit/decorators.js';
  * - trustrails-start: When user begins rollover process
  * - trustrails-account-created: Legacy event for backward compatibility
  */
+
+// User-friendly error messages for widget disabling scenarios (customer-agnostic)
+const WIDGET_DISABLED_MESSAGES = {
+  PAYMENT_REQUIRED: {
+    title: "Service Temporarily Unavailable",
+    message: "This service is currently unavailable. Please try again later.",
+    contactText: "Need help? Contact support"
+  },
+  COMPLIANCE_VIOLATION: {
+    title: "Service Temporarily Unavailable",
+    message: "This service is temporarily unavailable. Please try again later.",
+    contactText: "Contact support"
+  },
+  MAINTENANCE: {
+    title: "Service Temporarily Unavailable",
+    message: "This service is temporarily unavailable. Please try again later.",
+    contactText: "Check service status"
+  },
+  ACCOUNT_SUSPENDED: {
+    title: "Service Under Review",
+    message: "This service is temporarily unavailable while under review. Please try again later.",
+    contactText: "Questions? Contact support"
+  },
+  RATE_LIMIT_EXCEEDED: {
+    title: "Too Many Requests",
+    message: "You've reached the maximum number of requests. Please try again later.",
+    contactText: "Need immediate help? Contact support"
+  }
+} as const;
+
+type DisabledReason = keyof typeof WIDGET_DISABLED_MESSAGES;
 @customElement('trustrails-widget')
 export class TrustRailsWidget extends LitElement {
   // Public properties that partners can configure
@@ -51,6 +82,7 @@ export class TrustRailsWidget extends LitElement {
   @property({ type: String, attribute: 'user-email' }) userEmail = ''; // Optional
   @property({ type: String, attribute: 'user-id' }) userId = ''; // Optional, if partner has it
   @property({ type: String }) environment: 'sandbox' | 'production' = 'sandbox';
+  @property({ type: String, attribute: 'api-endpoint' }) apiEndpoint = ''; // Optional custom API endpoint
   @property({ type: Object }) theme = {
     primaryColor: '#1a73e8',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -66,6 +98,8 @@ export class TrustRailsWidget extends LitElement {
   @state() private sessionId: string | null = null;
   @state() private userSession: any = null;
   @state() private isUserSessionReady = false;
+  @state() private isDisabled = false;
+  @state() private disabledReason: DisabledReason | null = null;
 
   // Development mode flag - only log sensitive data in development
   private get isDevelopment(): boolean {
@@ -268,6 +302,66 @@ export class TrustRailsWidget extends LitElement {
     .user-status.ready .user-status-indicator {
       background: #10b981;
     }
+
+    .disabled-message {
+      text-align: center;
+      padding: 32px 24px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--trustrails-border-radius, 8px);
+      margin: 16px 0;
+    }
+
+    .disabled-message .icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+      background: #64748b;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: white;
+    }
+
+    .disabled-message h3 {
+      margin: 0 0 12px 0;
+      font-size: 20px;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .disabled-message p {
+      margin: 0 0 20px 0;
+      color: #64748b;
+      line-height: 1.5;
+      font-size: 15px;
+    }
+
+    .disabled-message .contact-link {
+      display: inline-flex;
+      align-items: center;
+      color: var(--trustrails-primary-color, #1a73e8);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 14px;
+      gap: 6px;
+      padding: 8px 16px;
+      border: 1px solid var(--trustrails-primary-color, #1a73e8);
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+
+    .disabled-message .contact-link:hover {
+      background: var(--trustrails-primary-color, #1a73e8);
+      color: white;
+    }
+
+    .disabled-message .contact-link::after {
+      content: '→';
+      font-size: 12px;
+    }
   `;
 
   constructor() {
@@ -336,25 +430,37 @@ export class TrustRailsWidget extends LitElement {
             // Restore user session if available
             if (storedUserSession) {
               try {
-                this.userSession = JSON.parse(storedUserSession);
+                const parsedSession = JSON.parse(storedUserSession);
 
-                // Validate the restored session
-                if (this.validateUserSession()) {
-                  this.isUserSessionReady = true;
+                // Check if session has required fields (old sessions may not have email)
+                if (!parsedSession.email || !parsedSession.user_id) {
                   if (this.isDevelopment) {
-                    console.log('✅ Restored user session:', {
-                      userId: this.userSession.user_id,
-                      email: this.userSession.email,
-                      isNewUser: this.userSession.is_new_user
-                    });
+                    console.log('❌ Stored session missing required fields (old format), clearing...');
                   }
-                } else {
-                  if (this.isDevelopment) {
-                    console.log('❌ Stored user session validation failed, clearing...');
-                  }
+                  sessionStorage.removeItem('trustrails_user_session');
                   this.userSession = null;
                   this.isUserSessionReady = false;
-                  sessionStorage.removeItem('trustrails_user_session');
+                } else {
+                  this.userSession = parsedSession;
+
+                  // Validate the restored session
+                  if (this.validateUserSession()) {
+                    this.isUserSessionReady = true;
+                    if (this.isDevelopment) {
+                      console.log('✅ Restored user session:', {
+                        userId: this.userSession.user_id,
+                        email: this.userSession.email,
+                        isNewUser: this.userSession.is_new_user
+                      });
+                    }
+                  } else {
+                    if (this.isDevelopment) {
+                      console.log('❌ Stored user session validation failed, clearing...');
+                    }
+                    this.userSession = null;
+                    this.isUserSessionReady = false;
+                    sessionStorage.removeItem('trustrails_user_session');
+                  }
                 }
               } catch (error) {
                 console.error('Error parsing stored user session:', error);
@@ -382,6 +488,50 @@ export class TrustRailsWidget extends LitElement {
     sessionStorage.removeItem('trustrails_user_session');
     this.userSession = null;
     this.isUserSessionReady = false;
+  }
+
+  private getDisabledReasonFromError(statusCode: number, errorData: any): DisabledReason | null {
+    // Map HTTP status codes and error messages to disabled reasons
+    switch (statusCode) {
+      case 402: // Payment Required
+        return 'PAYMENT_REQUIRED';
+      case 403: // Forbidden
+        if (errorData.code === 'COMPLIANCE_VIOLATION') {
+          return 'COMPLIANCE_VIOLATION';
+        }
+        if (errorData.code === 'ACCOUNT_SUSPENDED') {
+          return 'ACCOUNT_SUSPENDED';
+        }
+        return 'COMPLIANCE_VIOLATION'; // Default for 403
+      case 429: // Too Many Requests
+        return 'RATE_LIMIT_EXCEEDED';
+      case 503: // Service Unavailable
+        return 'MAINTENANCE';
+      default:
+        // Check for specific error codes in the response body
+        if (errorData.code) {
+          switch (errorData.code) {
+            case 'PAYMENT_REQUIRED':
+            case 'SUBSCRIPTION_EXPIRED':
+              return 'PAYMENT_REQUIRED';
+            case 'COMPLIANCE_VIOLATION':
+            case 'POLICY_VIOLATION':
+              return 'COMPLIANCE_VIOLATION';
+            case 'ACCOUNT_SUSPENDED':
+            case 'PARTNER_SUSPENDED':
+              return 'ACCOUNT_SUSPENDED';
+            case 'RATE_LIMIT_EXCEEDED':
+            case 'QUOTA_EXCEEDED':
+              return 'RATE_LIMIT_EXCEEDED';
+            case 'MAINTENANCE':
+            case 'SERVICE_UNAVAILABLE':
+              return 'MAINTENANCE';
+            default:
+              return null;
+          }
+        }
+        return null;
+    }
   }
 
   private applyTheme() {
@@ -447,6 +597,15 @@ export class TrustRailsWidget extends LitElement {
       }
       // Authenticate with TrustRails API
       await this.authenticate();
+
+      // If widget was disabled during authentication, stop here
+      if (this.isDisabled) {
+        if (this.isDevelopment) {
+          console.log('Widget is disabled, stopping initialization');
+        }
+        return;
+      }
+
       this.isAuthenticated = true;
       if (this.isDevelopment) {
         console.log('Authentication successful!');
@@ -468,9 +627,11 @@ export class TrustRailsWidget extends LitElement {
   }
 
   private async authenticate() {
-    const apiUrl = this.environment === 'production'
-      ? 'https://api.trustrails.com/api/widget/auth'
-      : 'http://localhost:3000/api/widget/auth';
+    const apiUrl = this.apiEndpoint
+      ? `${this.apiEndpoint}/api/widget/auth`
+      : this.environment === 'production'
+        ? 'https://api.trustrails.com/api/widget/auth'
+        : 'http://localhost:3002/api/widget/auth';
 
     if (this.isDevelopment) {
       console.log('Authenticating with:', apiUrl);
@@ -493,6 +654,19 @@ export class TrustRailsWidget extends LitElement {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+
+      // Check for specific error codes that indicate widget should be disabled
+      const disabledReason = this.getDisabledReasonFromError(response.status, errorData);
+      if (disabledReason) {
+        this.isDisabled = true;
+        this.disabledReason = disabledReason;
+        this.isLoading = false; // Ensure loading state is cleared
+        if (this.isDevelopment) {
+          console.log('Widget disabled due to:', disabledReason, 'Status:', response.status);
+        }
+        return; // Don't throw error, just mark as disabled
+      }
+
       throw new Error(errorData.error || `Authentication failed: ${response.statusText}`);
     }
 
@@ -595,9 +769,11 @@ export class TrustRailsWidget extends LitElement {
       throw new Error('Invalid email format provided');
     }
 
-    const apiUrl = this.environment === 'production'
-      ? 'https://api.trustrails.com/api/widget/create-account'
-      : 'http://localhost:3000/api/widget/create-account';
+    const apiUrl = this.apiEndpoint
+      ? `${this.apiEndpoint}/api/widget/create-account`
+      : this.environment === 'production'
+        ? 'https://api.trustrails.com/api/widget/create-account'
+        : 'http://localhost:3002/api/widget/create-account';
 
     if (this.isDevelopment) {
       console.log('Creating account for email:', email);
@@ -613,6 +789,7 @@ export class TrustRailsWidget extends LitElement {
       body: JSON.stringify({
         auth_type: 'email',
         email: email,
+        password: `TR_${crypto.getRandomValues(new Uint8Array(16)).reduce((acc, byte) => acc + byte.toString(16).padStart(2, '0'), '')}`, // Generate secure random password
         partner_id: this.partnerId,
         widget_version: '1.0.0',
         timestamp: new Date().toISOString()
@@ -624,6 +801,13 @@ export class TrustRailsWidget extends LitElement {
       try {
         const errorData = await response.json();
         errorMessage = errorData.error || errorMessage;
+
+        // Make error messages more user-friendly
+        if (errorMessage.includes('Too many attempts for this email')) {
+          errorMessage = 'This email has reached the daily limit. Please try again tomorrow or use a different email.';
+        } else if (errorMessage.includes('Rate limit exceeded')) {
+          errorMessage = 'Too many requests. Please wait a moment and try again.';
+        }
       } catch (parseError) {
         console.error('Error parsing error response:', parseError);
       }
@@ -729,6 +913,44 @@ export class TrustRailsWidget extends LitElement {
     await this.handleUserEmailFlow();
   }
 
+  // Public method to manually set disabled state (useful for testing and debugging)
+  public setDisabled(reason: DisabledReason | null = null): void {
+    this.isDisabled = reason !== null;
+    this.disabledReason = reason;
+    if (this.isDevelopment) {
+      console.log('Widget disabled state set to:', reason);
+    }
+  }
+
+  // Public method to check if widget is disabled
+  public isWidgetDisabled(): boolean {
+    return this.isDisabled;
+  }
+
+  // Public method to get the disabled reason
+  public getDisabledReason(): DisabledReason | null {
+    return this.disabledReason;
+  }
+
+  private renderDisabledMessage() {
+    if (!this.isDisabled || !this.disabledReason) {
+      return '';
+    }
+
+    const messageConfig = WIDGET_DISABLED_MESSAGES[this.disabledReason];
+
+    return html`
+      <div class="disabled-message">
+        <div class="icon">⚠</div>
+        <h3>${messageConfig.title}</h3>
+        <p>${messageConfig.message}</p>
+        <a href="mailto:support@trustrails.com" class="contact-link">
+          ${messageConfig.contactText}
+        </a>
+      </div>
+    `;
+  }
+
   // Legacy method for backward compatibility
   async createAccount(authType: 'oauth' | 'email', data: any) {
     console.warn('createAccount method is deprecated. Use the user-email attribute for automatic user session management.');
@@ -737,9 +959,11 @@ export class TrustRailsWidget extends LitElement {
       throw new Error('No bearer token available');
     }
 
-    const apiUrl = this.environment === 'production'
-      ? 'https://api.trustrails.com/api/widget/create-account'
-      : 'http://localhost:3000/api/widget/create-account';
+    const apiUrl = this.apiEndpoint
+      ? `${this.apiEndpoint}/api/widget/create-account`
+      : this.environment === 'production'
+        ? 'https://api.trustrails.com/api/widget/create-account'
+        : 'http://localhost:3002/api/widget/create-account';
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -806,9 +1030,13 @@ export class TrustRailsWidget extends LitElement {
       throw new Error('Not authenticated');
     }
 
+    if (this.isDisabled) {
+      throw new Error('Widget is disabled and cannot make API calls');
+    }
+
     const apiUrl = this.environment === 'production'
       ? `https://api.trustrails.com${endpoint}`
-      : `http://localhost:3000${endpoint}`;
+      : `http://localhost:3002${endpoint}`;
 
     // Include user context in headers if available
     const headers: Record<string, string> = {
@@ -829,13 +1057,21 @@ export class TrustRailsWidget extends LitElement {
     });
 
     if (!response.ok) {
-      let errorMessage = `API call failed: ${response.statusText}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorMessage;
-      } catch (parseError) {
-        console.error('Error parsing API error response:', parseError);
+      const errorData = await response.json().catch(() => ({}));
+
+      // Check if this error should disable the widget
+      const disabledReason = this.getDisabledReasonFromError(response.status, errorData);
+      if (disabledReason) {
+        this.isDisabled = true;
+        this.disabledReason = disabledReason;
+        if (this.isDevelopment) {
+          console.log('Widget disabled during API call due to:', disabledReason);
+        }
+        throw new Error('Service is currently unavailable');
       }
+
+      let errorMessage = `API call failed: ${response.statusText}`;
+      errorMessage = errorData.error || errorMessage;
       throw new Error(errorMessage);
     }
 
@@ -912,7 +1148,8 @@ export class TrustRailsWidget extends LitElement {
       ` : ''}
 
       <div class="content">
-        ${this.isLoading ? html`
+        ${this.isDisabled ? this.renderDisabledMessage() :
+        this.isLoading ? html`
           <div class="loading">
             <div class="spinner"></div>
           </div>
