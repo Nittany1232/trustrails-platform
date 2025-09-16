@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token Refresh Test | TrustRails</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    button {
+      background: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:disabled {
+      background: #ccc;
+    }
+    .token-info {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      word-break: break-all;
+      margin: 10px 0;
+    }
+    .status {
+      padding: 5px 10px;
+      border-radius: 4px;
+      margin: 5px 0;
+    }
+    .valid { background: #d4edda; color: #155724; }
+    .expired { background: #f8d7da; color: #721c24; }
+    .warning { background: #fff3cd; color: #856404; }
+    h2 { color: #333; }
+    .countdown { font-size: 24px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>🔐 Token Refresh Testing</h1>
+
+  <div class="container">
+    <div class="panel">
+      <h2>Token Controls</h2>
+
+      <div>
+        <button onclick="authenticate()">🔑 Authenticate Fresh</button>
+        <button onclick="checkToken()">🔍 Check Current Token</button>
+        <button onclick="clearTokens()">🗑️ Clear Tokens</button>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <h3>Token Manipulation (Testing Only)</h3>
+        <button onclick="expireToken()">⏰ Expire Token (Set exp to past)</button>
+        <button onclick="corruptToken()">💔 Corrupt Token</button>
+        <button onclick="extendToken()">📅 Extend Token (+1 hour)</button>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <h3>API Test</h3>
+        <button onclick="testAPICall()" id="apiTestBtn">📡 Test API Call with Bearer</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Token Status</h2>
+
+      <div id="tokenStatus" class="status warning">No token loaded</div>
+
+      <div id="tokenExpiry" style="margin: 20px 0;">
+        <h3>Token Expiration</h3>
+        <div class="countdown" id="countdown">--:--:--</div>
+        <div id="expiryTime" style="font-size: 12px; color: #666;"></div>
+      </div>
+
+      <div id="tokenDetails">
+        <h3>Token Details</h3>
+        <div class="token-info" id="tokenInfo">No token</div>
+      </div>
+
+      <div id="sessionDetails">
+        <h3>Session ID</h3>
+        <div class="token-info" id="sessionInfo">No session</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 20px; border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px;">
+    <h2>Activity Log</h2>
+    <div id="log" style="max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px;"></div>
+  </div>
+
+  <script type="module">
+    const API_KEY = 'tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R';
+    const PARTNER_ID = 'ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8';
+    let countdownInterval;
+
+    function log(message, type = 'info') {
+      const logDiv = document.getElementById('log');
+      const time = new Date().toLocaleTimeString();
+      const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+      logDiv.innerHTML += `<div style="color: ${color}">[${time}] ${message}</div>`;
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    window.authenticate = async function() {
+      log('🔑 Authenticating with fresh credentials...');
+
+      try {
+        const response = await fetch('http://localhost:3000/api/widget/auth', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-TrustRails-API-Key': API_KEY,
+            'X-TrustRails-Partner-ID': PARTNER_ID
+          },
+          body: JSON.stringify({
+            widget_version: '1.0.0'
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          sessionStorage.setItem('trustrails_bearer_token', data.bearer_token);
+          sessionStorage.setItem('trustrails_session_id', data.session_id);
+          log('✅ Authentication successful', 'success');
+          checkToken();
+        } else {
+          log(`❌ Authentication failed: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        log(`❌ Network error: ${error.message}`, 'error');
+      }
+    };
+
+    window.checkToken = function() {
+      const token = sessionStorage.getItem('trustrails_bearer_token');
+      const sessionId = sessionStorage.getItem('trustrails_session_id');
+
+      if (!token) {
+        document.getElementById('tokenStatus').className = 'status warning';
+        document.getElementById('tokenStatus').textContent = 'No token found';
+        document.getElementById('tokenInfo').textContent = 'No token';
+        document.getElementById('sessionInfo').textContent = 'No session';
+        stopCountdown();
+        log('⚠️ No token found in sessionStorage');
+        return;
+      }
+
+      // Parse JWT
+      try {
+        const tokenParts = token.split('.');
+        const header = JSON.parse(atob(tokenParts[0]));
+        const payload = JSON.parse(atob(tokenParts[1]));
+
+        const now = Date.now() / 1000;
+        const expiresIn = payload.exp - now;
+
+        if (expiresIn > 0) {
+          document.getElementById('tokenStatus').className = 'status valid';
+          document.getElementById('tokenStatus').textContent = `✅ Token valid for ${Math.floor(expiresIn / 60)} minutes`;
+          log(`✅ Token valid, expires in ${Math.floor(expiresIn / 60)} minutes`, 'success');
+        } else {
+          document.getElementById('tokenStatus').className = 'status expired';
+          document.getElementById('tokenStatus').textContent = '❌ Token expired';
+          log('❌ Token has expired', 'error');
+        }
+
+        // Display token details
+        document.getElementById('tokenInfo').textContent = JSON.stringify(payload, null, 2);
+        document.getElementById('sessionInfo').textContent = sessionId || 'No session';
+        document.getElementById('expiryTime').textContent = `Expires: ${new Date(payload.exp * 1000).toLocaleString()}`;
+
+        // Start countdown
+        startCountdown(payload.exp);
+
+      } catch (error) {
+        log(`❌ Error parsing token: ${error.message}`, 'error');
+        document.getElementById('tokenStatus').className = 'status expired';
+        document.getElementById('tokenStatus').textContent = '❌ Invalid token';
+      }
+    };
+
+    function startCountdown(expTime) {
+      stopCountdown();
+
+      countdownInterval = setInterval(() => {
+        const now = Date.now() / 1000;
+        const remaining = expTime - now;
+
+        if (remaining <= 0) {
+          document.getElementById('countdown').textContent = 'EXPIRED';
+          document.getElementById('tokenStatus').className = 'status expired';
+          document.getElementById('tokenStatus').textContent = '❌ Token expired';
+          stopCountdown();
+          log('⏰ Token just expired!', 'error');
+        } else {
+          const hours = Math.floor(remaining / 3600);
+          const minutes = Math.floor((remaining % 3600) / 60);
+          const seconds = Math.floor(remaining % 60);
+          document.getElementById('countdown').textContent =
+            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+          // Warning when less than 5 minutes
+          if (remaining < 300) {
+            document.getElementById('tokenStatus').className = 'status warning';
+            document.getElementById('tokenStatus').textContent = `⚠️ Token expiring soon! ${Math.floor(remaining)} seconds`;
+          }
+        }
+      }, 1000);
+    }
+
+    function stopCountdown() {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+    }
+
+    window.clearTokens = function() {
+      sessionStorage.removeItem('trustrails_bearer_token');
+      sessionStorage.removeItem('trustrails_session_id');
+      log('🗑️ Tokens cleared from sessionStorage');
+      checkToken();
+    };
+
+    window.expireToken = function() {
+      const token = sessionStorage.getItem('trustrails_bearer_token');
+      if (!token) {
+        log('⚠️ No token to expire');
+        return;
+      }
+
+      const parts = token.split('.');
+      const payload = JSON.parse(atob(parts[1]));
+      payload.exp = Math.floor(Date.now() / 1000) - 3600; // 1 hour ago
+
+      const newToken = parts[0] + '.' + btoa(JSON.stringify(payload)) + '.' + parts[2];
+      sessionStorage.setItem('trustrails_bearer_token', newToken);
+
+      log('⏰ Token manually expired (for testing)');
+      checkToken();
+    };
+
+    window.corruptToken = function() {
+      const token = sessionStorage.getItem('trustrails_bearer_token');
+      if (!token) {
+        log('⚠️ No token to corrupt');
+        return;
+      }
+
+      sessionStorage.setItem('trustrails_bearer_token', token + 'CORRUPTED');
+      log('💔 Token corrupted (for testing)');
+      checkToken();
+    };
+
+    window.extendToken = function() {
+      const token = sessionStorage.getItem('trustrails_bearer_token');
+      if (!token) {
+        log('⚠️ No token to extend');
+        return;
+      }
+
+      const parts = token.split('.');
+      const payload = JSON.parse(atob(parts[1]));
+      payload.exp = payload.exp + 3600; // Add 1 hour
+
+      const newToken = parts[0] + '.' + btoa(JSON.stringify(payload)) + '.' + parts[2];
+      sessionStorage.setItem('trustrails_bearer_token', newToken);
+
+      log('📅 Token extended by 1 hour (for testing)');
+      checkToken();
+    };
+
+    window.testAPICall = async function() {
+      const token = sessionStorage.getItem('trustrails_bearer_token');
+      if (!token) {
+        log('⚠️ No token for API call');
+        return;
+      }
+
+      log('📡 Testing API call with bearer token...');
+
+      try {
+        const response = await fetch('http://localhost:3000/api/widget/create-account', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            auth_type: 'email',
+            email: `test${Date.now()}@example.com`,
+            password: 'TestPassword123!'
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          log(`✅ API call successful: ${JSON.stringify(data.user)}`, 'success');
+        } else if (response.status === 401) {
+          log(`❌ API call failed: 401 Unauthorized - Token may be expired or invalid`, 'error');
+        } else {
+          log(`❌ API call failed: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        log(`❌ Network error: ${error.message}`, 'error');
+      }
+    };
+
+    // Check token on load
+    window.addEventListener('load', () => {
+      log('🚀 Token refresh test page loaded');
+      checkToken();
+    });
+
+    // Check token every 10 seconds
+    setInterval(checkToken, 10000);
+  </script>
+</body>
+</html>

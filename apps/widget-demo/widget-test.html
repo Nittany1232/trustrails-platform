@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Widget Test</title>
+</head>
+<body>
+  <h1>TrustRails Widget Test</h1>
+
+  <div id="status">Loading widget...</div>
+
+  <!-- Load the widget module -->
+  <script type="module" src="/src/widget-loader.js"></script>
+
+  <!-- Create widget element after module loads -->
+  <script type="module">
+    // Wait a bit for the module to load and register
+    setTimeout(() => {
+      const status = document.getElementById('status');
+
+      if (customElements.get('trustrails-widget')) {
+        status.textContent = '✅ Widget registered successfully!';
+
+        // Create and add the widget
+        const widget = document.createElement('trustrails-widget');
+        widget.setAttribute('partner-id', 'ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8');
+        widget.setAttribute('api-key', 'tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R');
+        widget.setAttribute('environment', 'sandbox');
+
+        document.body.appendChild(widget);
+
+        console.log('Widget added to page');
+      } else {
+        status.textContent = '❌ Widget not registered';
+        console.error('Widget custom element not found');
+      }
+    }, 1000);
+  </script>
+</body>
+</html>

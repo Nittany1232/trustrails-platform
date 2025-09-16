@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Widget Authentication</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    h2 {
+      color: #666;
+      font-size: 18px;
+      margin-top: 0;
+      border-bottom: 2px solid #e0e0e0;
+      padding-bottom: 10px;
+    }
+    .log {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-entry {
+      margin: 5px 0;
+      padding: 5px;
+      border-left: 3px solid #e0e0e0;
+      background: white;
+    }
+    .log-entry.success {
+      border-left-color: #28a745;
+      background: #d4edda;
+    }
+    .log-entry.error {
+      border-left-color: #dc3545;
+      background: #f8d7da;
+    }
+    .log-entry.info {
+      border-left-color: #007bff;
+      background: #d1ecf1;
+    }
+    .log-entry.warning {
+      border-left-color: #ffc107;
+      background: #fff3cd;
+    }
+    .controls {
+      margin: 20px 0;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+    .status {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+    .status.connected {
+      background: #28a745;
+      color: white;
+    }
+    .status.disconnected {
+      background: #dc3545;
+      color: white;
+    }
+    .widget-container {
+      border: 2px dashed #dee2e6;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      background: #fafafa;
+    }
+    .config {
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .config input {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .config label {
+      display: block;
+      font-weight: bold;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    .storage-view {
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .network-interceptor {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      border: 2px solid #007bff;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      font-size: 12px;
+      max-width: 300px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 TrustRails Widget Authentication Tester</h1>
+  <p>This page helps you test and verify the widget authentication flow with bearer tokens.</p>
+
+  <div class="container">
+    <!-- Left Panel: Configuration and Widget -->
+    <div class="panel">
+      <h2>Widget Configuration</h2>
+
+      <div class="config">
+        <label>Partner ID (Custodian ID):</label>
+        <input type="text" id="partnerId" value="demo-custodian" />
+
+        <label>Public API Key:</label>
+        <input type="text" id="apiKey" placeholder="tr_test_pk_xxxxx or tr_live_pk_xxxxx" />
+        <small>Get this from Integrations → Widget tab → Public API Keys</small>
+
+        <label>Environment:</label>
+        <select id="environment" style="width: 100%; padding: 8px; margin: 5px 0;">
+          <option value="sandbox">Sandbox</option>
+          <option value="production">Production</option>
+        </select>
+      </div>
+
+      <div class="controls">
+        <button onclick="initializeWidget()">1. Initialize Widget</button>
+        <button onclick="testAuthentication()" disabled id="authBtn">2. Test Auth</button>
+        <button onclick="testAPICall()" disabled id="apiBtn">3. Test API Call</button>
+        <button onclick="clearAll()">Clear All</button>
+      </div>
+
+      <div class="widget-container">
+        <div id="widgetPlaceholder">Widget will appear here after initialization...</div>
+      </div>
+
+      <h2>Session Storage</h2>
+      <div class="storage-view" id="storageView">
+        No session data yet...
+      </div>
+    </div>
+
+    <!-- Right Panel: Logs and Network -->
+    <div class="panel">
+      <h2>Authentication Flow Log <span id="status" class="status disconnected">Not Connected</span></h2>
+      <div class="log" id="authLog">
+        Waiting for widget initialization...
+      </div>
+
+      <h2>Network Requests</h2>
+      <div class="log" id="networkLog">
+        Network requests will appear here...
+      </div>
+    </div>
+  </div>
+
+  <!-- Network Interceptor Popup -->
+  <div class="network-interceptor" style="display: none;" id="interceptor">
+    <strong>🔍 Last Request:</strong>
+    <div id="interceptorContent"></div>
+  </div>
+
+  <script type="module">
+    // Import the widget (adjust path as needed)
+    // For production: import from CDN
+    // For local testing: import from local build
+
+    let bearerToken = null;
+    let sessionId = null;
+    let widgetElement = null;
+
+    // Override fetch to intercept requests
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const [url, options = {}] = args;
+
+      // Log the request
+      logNetwork(`📤 ${options.method || 'GET'} ${url}`, 'info');
+
+      if (options.headers) {
+        // Check for API key
+        if (options.headers['X-TrustRails-API-Key']) {
+          logAuth(`🔑 Using API Key: ${options.headers['X-TrustRails-API-Key'].substring(0, 20)}...`, 'info');
+          showInterceptor('API Key', options.headers['X-TrustRails-API-Key']);
+        }
+
+        // Check for Bearer token
+        if (options.headers['Authorization']) {
+          const token = options.headers['Authorization'];
+          if (token.startsWith('Bearer ')) {
+            logAuth(`🎫 Using Bearer Token: ${token.substring(7, 30)}...`, 'success');
+            showInterceptor('Bearer Token', token);
+          }
+        }
+      }
+
+      // Make the actual request
+      try {
+        const response = await originalFetch.apply(this, args);
+
+        // Log the response
+        const statusClass = response.ok ? 'success' : 'error';
+        logNetwork(`📥 ${response.status} ${response.statusText}`, statusClass);
+
+        // Clone response to read body
+        const clonedResponse = response.clone();
+        if (url.includes('/api/widget/auth')) {
+          const data = await clonedResponse.json();
+          if (data.bearer_token) {
+            bearerToken = data.bearer_token;
+            sessionId = data.session_id;
+            logAuth(`✅ Received Bearer Token: ${bearerToken.substring(0, 30)}...`, 'success');
+            logAuth(`✅ Session ID: ${sessionId}`, 'success');
+            updateStatus('connected');
+            updateStorage();
+            document.getElementById('apiBtn').disabled = false;
+          }
+        }
+
+        return response;
+      } catch (error) {
+        logNetwork(`❌ Request Failed: ${error.message}`, 'error');
+        throw error;
+      }
+    };
+
+    function logAuth(message, type = 'info') {
+      const log = document.getElementById('authLog');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function logNetwork(message, type = 'info') {
+      const log = document.getElementById('networkLog');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function updateStatus(status) {
+      const statusEl = document.getElementById('status');
+      statusEl.className = `status ${status}`;
+      statusEl.textContent = status === 'connected' ? 'Connected' : 'Not Connected';
+    }
+
+    function updateStorage() {
+      const view = document.getElementById('storageView');
+      const storage = {
+        bearer_token: sessionStorage.getItem('trustrails_bearer_token'),
+        session_id: sessionStorage.getItem('trustrails_session_id')
+      };
+      view.innerHTML = `Bearer Token: ${storage.bearer_token ? storage.bearer_token.substring(0, 50) + '...' : 'Not found'}
+Session ID: ${storage.session_id || 'Not found'}`;
+    }
+
+    function showInterceptor(type, value) {
+      const interceptor = document.getElementById('interceptor');
+      const content = document.getElementById('interceptorContent');
+      content.innerHTML = `<strong>${type}:</strong><br>${value.substring(0, 50)}...`;
+      interceptor.style.display = 'block';
+      setTimeout(() => {
+        interceptor.style.display = 'none';
+      }, 3000);
+    }
+
+    window.initializeWidget = async function() {
+      const partnerId = document.getElementById('partnerId').value;
+      const apiKey = document.getElementById('apiKey').value;
+      const environment = document.getElementById('environment').value;
+
+      if (!apiKey) {
+        alert('Please enter your public API key');
+        return;
+      }
+
+      logAuth('🚀 Initializing widget...', 'info');
+
+      // Clear previous widget if exists
+      const placeholder = document.getElementById('widgetPlaceholder');
+      placeholder.innerHTML = '';
+
+      // Create widget element
+      widgetElement = document.createElement('trustrails-widget');
+      widgetElement.setAttribute('partner-id', partnerId);
+      widgetElement.setAttribute('api-key', apiKey);
+      widgetElement.setAttribute('environment', environment);
+
+      // Add event listeners
+      widgetElement.addEventListener('trustrails-start', (event) => {
+        logAuth(`📢 Widget Event: Rollover Started - ${JSON.stringify(event.detail)}`, 'info');
+      });
+
+      widgetElement.addEventListener('trustrails-account-created', (event) => {
+        logAuth(`📢 Widget Event: Account Created - ${JSON.stringify(event.detail)}`, 'success');
+      });
+
+      placeholder.appendChild(widgetElement);
+
+      logAuth('✅ Widget element created and added to DOM', 'success');
+      logAuth('⏳ Waiting for widget to authenticate...', 'info');
+
+      // Enable auth test button
+      document.getElementById('authBtn').disabled = false;
+
+      // Load widget script if not already loaded
+      if (!document.querySelector('script[src*="trustrails-widget"]')) {
+        const script = document.createElement('script');
+        script.type = 'module';
+        // For local testing:
+        script.src = 'http://localhost:5173/@trustrails/rollover-widget';
+        // For production:
+        // script.src = 'https://cdn.trustrails.com/widget/v1/trustrails-widget.js';
+
+        script.onload = () => {
+          logAuth('✅ Widget script loaded', 'success');
+        };
+        script.onerror = () => {
+          logAuth('❌ Failed to load widget script', 'error');
+        };
+
+        document.head.appendChild(script);
+      }
+    };
+
+    window.testAuthentication = async function() {
+      logAuth('🔐 Testing manual authentication...', 'info');
+
+      const partnerId = document.getElementById('partnerId').value;
+      const apiKey = document.getElementById('apiKey').value;
+
+      try {
+        const response = await fetch('http://localhost:3000/api/widget/auth', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-TrustRails-API-Key': apiKey,
+            'X-TrustRails-Partner-ID': partnerId
+          },
+          body: JSON.stringify({
+            widget_version: '1.0.0',
+            timestamp: new Date().toISOString()
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Authentication failed');
+        }
+
+        const data = await response.json();
+        bearerToken = data.bearer_token;
+        sessionId = data.session_id;
+
+        // Store in session storage like widget would
+        sessionStorage.setItem('trustrails_bearer_token', bearerToken);
+        sessionStorage.setItem('trustrails_session_id', sessionId);
+
+        logAuth('✅ Manual authentication successful!', 'success');
+        updateStorage();
+
+      } catch (error) {
+        logAuth(`❌ Authentication failed: ${error.message}`, 'error');
+      }
+    };
+
+    window.testAPICall = async function() {
+      if (!bearerToken) {
+        alert('Please authenticate first!');
+        return;
+      }
+
+      logAuth('📡 Testing API call with bearer token...', 'info');
+
+      try {
+        const response = await fetch('http://localhost:3000/api/widget/create-account', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${bearerToken}`
+          },
+          body: JSON.stringify({
+            auth_type: 'email',
+            email: `test${Date.now()}@example.com`,
+            password: 'TestPassword123!'
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'API call failed');
+        }
+
+        const data = await response.json();
+        logAuth(`✅ API call successful! User ID: ${data.user.id}`, 'success');
+
+      } catch (error) {
+        logAuth(`❌ API call failed: ${error.message}`, 'error');
+      }
+    };
+
+    window.clearAll = function() {
+      sessionStorage.clear();
+      document.getElementById('authLog').innerHTML = 'Cleared...';
+      document.getElementById('networkLog').innerHTML = 'Cleared...';
+      document.getElementById('widgetPlaceholder').innerHTML = 'Widget will appear here after initialization...';
+      bearerToken = null;
+      sessionId = null;
+      updateStatus('disconnected');
+      updateStorage();
+      document.getElementById('authBtn').disabled = true;
+      document.getElementById('apiBtn').disabled = true;
+    };
+
+    // Check storage on load
+    updateStorage();
+  </script>
+</body>
+</html>

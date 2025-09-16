@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import path from 'path';
 
 export default defineConfig({
   server: {
@@ -7,7 +8,10 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@trustrails/rollover-widget': '../../packages/rollover-widget/src/index.ts'
+      '@trustrails/rollover-widget': path.resolve(__dirname, '../../packages/rollover-widget/src/index.ts')
     }
+  },
+  optimizeDeps: {
+    include: ['lit', 'lit/decorators.js']
   }
 });

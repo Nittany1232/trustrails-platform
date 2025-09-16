@@ -12,12 +12,44 @@ import { customElement, property, state } from 'lit/decorators.js';
  * - Encapsulated styling - no CSS conflicts
  * - Small bundle size - ~25KB gzipped
  * - Native browser support
+ *
+ * USER EMAIL HANDLING:
+ * When the 'user-email' attribute is provided, the widget automatically:
+ * 1. Authenticates with the API using partner credentials
+ * 2. Creates or retrieves a user account for the provided email
+ * 3. Stores user session in sessionStorage for persistence across page refreshes
+ * 4. Validates stored sessions against current email and partner ID
+ * 5. Handles email changes dynamically during widget lifecycle
+ *
+ * USAGE EXAMPLES:
+ *
+ * Basic usage (no user email):
+ * <trustrails-widget
+ *   partner-id="your-partner-id"
+ *   api-key="your-api-key"
+ *   environment="production">
+ * </trustrails-widget>
+ *
+ * With user email (recommended):
+ * <trustrails-widget
+ *   partner-id="your-partner-id"
+ *   api-key="your-api-key"
+ *   user-email="user@example.com"
+ *   environment="production">
+ * </trustrails-widget>
+ *
+ * EVENTS DISPATCHED:
+ * - trustrails-user-ready: When user session is established
+ * - trustrails-start: When user begins rollover process
+ * - trustrails-account-created: Legacy event for backward compatibility
  */
 @customElement('trustrails-widget')
 export class TrustRailsWidget extends LitElement {
   // Public properties that partners can configure
-  @property({ type: String }) partnerId = '';
-  @property({ type: String }) apiKey = '';
+  @property({ type: String, attribute: 'partner-id' }) partnerId = '';
+  @property({ type: String, attribute: 'api-key' }) apiKey = '';
+  @property({ type: String, attribute: 'user-email' }) userEmail = ''; // Optional
+  @property({ type: String, attribute: 'user-id' }) userId = ''; // Optional, if partner has it
   @property({ type: String }) environment: 'sandbox' | 'production' = 'sandbox';
   @property({ type: Object }) theme = {
     primaryColor: '#1a73e8',
@@ -32,6 +64,17 @@ export class TrustRailsWidget extends LitElement {
   @state() private currentStep = 0;
   @state() private bearerToken: string | null = null;
   @state() private sessionId: string | null = null;
+  @state() private userSession: any = null;
+  @state() private isUserSessionReady = false;
+
+  // Development mode flag - only log sensitive data in development
+  private get isDevelopment(): boolean {
+    return this.environment === 'sandbox' ||
+           (typeof window !== 'undefined' &&
+            (window.location.hostname === 'localhost' ||
+             window.location.hostname.includes('dev') ||
+             window.location.hostname.includes('staging')));
+  }
 
   // Scoped styles - won't affect parent page
   static override styles = css`
@@ -196,6 +239,35 @@ export class TrustRailsWidget extends LitElement {
       color: #6b7280;
       line-height: 1.6;
     }
+
+    .user-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+
+    .user-status.ready {
+      background: #f0f9f4;
+      border-color: #d1fae5;
+      color: #065f46;
+    }
+
+    .user-status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #9ca3af;
+    }
+
+    .user-status.ready .user-status-indicator {
+      background: #10b981;
+    }
   `;
 
   constructor() {
@@ -205,13 +277,111 @@ export class TrustRailsWidget extends LitElement {
 
   override connectedCallback() {
     super.connectedCallback();
-    console.log('TrustRails Widget Connected', {
-      partnerId: this.partnerId,
-      environment: this.environment
-    });
+    if (this.isDevelopment) {
+      console.log('TrustRails Widget Connected', {
+        partnerId: this.partnerId,
+        apiKey: this.apiKey ? 'set' : 'not set',
+        userEmail: this.userEmail || 'not provided',
+        environment: this.environment
+      });
+    }
+  }
 
-    // Initialize widget when connected to DOM
+  override firstUpdated() {
+    if (this.isDevelopment) {
+      console.log('TrustRails Widget First Updated', {
+        partnerId: this.partnerId,
+        apiKey: this.apiKey ? 'set' : 'not set',
+        userEmail: this.userEmail || 'not provided',
+        environment: this.environment
+      });
+    }
+
+    // Check for existing session first
+    this.checkExistingSession();
+
+    // Initialize widget after first render when properties are set
     this.initialize();
+  }
+
+  private checkExistingSession() {
+    // Check if we have stored tokens
+    const storedToken = sessionStorage.getItem('trustrails_bearer_token');
+    const storedSessionId = sessionStorage.getItem('trustrails_session_id');
+    const storedUserSession = sessionStorage.getItem('trustrails_user_session');
+
+    if (storedToken && storedSessionId) {
+      if (this.isDevelopment) {
+        console.log('Found existing session, validating...');
+      }
+
+      // Parse the JWT to check expiration (without verification - that's backend's job)
+      try {
+        const tokenParts = storedToken.split('.');
+        if (tokenParts.length === 3) {
+          const payload = JSON.parse(atob(tokenParts[1]));
+          const expiresAt = payload.exp * 1000; // Convert to milliseconds
+          const now = Date.now();
+
+          if (expiresAt > now) {
+            // Token still valid
+            const hoursLeft = Math.floor((expiresAt - now) / (1000 * 60 * 60));
+            if (this.isDevelopment) {
+              console.log(`✅ Existing token still valid for ${hoursLeft} hours`);
+            }
+            this.bearerToken = storedToken;
+            this.sessionId = storedSessionId;
+            this.isAuthenticated = true;
+
+            // Restore user session if available
+            if (storedUserSession) {
+              try {
+                this.userSession = JSON.parse(storedUserSession);
+
+                // Validate the restored session
+                if (this.validateUserSession()) {
+                  this.isUserSessionReady = true;
+                  if (this.isDevelopment) {
+                    console.log('✅ Restored user session:', {
+                      userId: this.userSession.user_id,
+                      email: this.userSession.email,
+                      isNewUser: this.userSession.is_new_user
+                    });
+                  }
+                } else {
+                  if (this.isDevelopment) {
+                    console.log('❌ Stored user session validation failed, clearing...');
+                  }
+                  this.userSession = null;
+                  this.isUserSessionReady = false;
+                  sessionStorage.removeItem('trustrails_user_session');
+                }
+              } catch (error) {
+                console.error('Error parsing stored user session:', error);
+                sessionStorage.removeItem('trustrails_user_session');
+              }
+            }
+            return;
+          } else {
+            if (this.isDevelopment) {
+              console.log('⏰ Token expired, need to re-authenticate');
+            }
+            this.clearStoredSession();
+          }
+        }
+      } catch (error) {
+        console.error('Error checking token expiration:', error);
+        this.clearStoredSession();
+      }
+    }
+  }
+
+  private clearStoredSession() {
+    sessionStorage.removeItem('trustrails_bearer_token');
+    sessionStorage.removeItem('trustrails_session_id');
+    sessionStorage.removeItem('trustrails_user_session');
+    this.userSession = null;
+    this.isUserSessionReady = false;
   }
 
   private applyTheme() {
@@ -228,8 +398,43 @@ export class TrustRailsWidget extends LitElement {
   }
 
   private async initialize() {
+    if (this.isDevelopment) {
+      console.log('Widget initialize() called', {
+        partnerId: this.partnerId,
+        apiKey: this.apiKey ? `${this.apiKey.substring(0, 20)}...` : 'not set',
+        environment: this.environment,
+        isAuthenticated: this.isAuthenticated
+      });
+    }
+
     if (!this.partnerId || !this.apiKey) {
       this.error = 'Missing required configuration: partnerId and apiKey';
+      console.error('Widget initialization failed:', this.error);
+      return;
+    }
+
+    // Skip authentication if we already have a valid session
+    if (this.isAuthenticated && this.bearerToken) {
+      if (this.isDevelopment) {
+        console.log('✅ Using existing valid session');
+      }
+
+      // Check if we need to handle user email flow for existing session
+      if (this.userEmail && !this.isUserSessionReady) {
+        if (this.isDevelopment) {
+          console.log('User email provided but no user session found, creating...');
+        }
+        this.isLoading = true;
+        this.error = null;
+        try {
+          await this.handleUserEmailFlow();
+        } catch (err) {
+          this.error = err instanceof Error ? err.message : 'Failed to create user session';
+          console.error('User session creation failed:', err);
+        } finally {
+          this.isLoading = false;
+        }
+      }
       return;
     }
 
@@ -237,11 +442,26 @@ export class TrustRailsWidget extends LitElement {
     this.error = null;
 
     try {
+      if (this.isDevelopment) {
+        console.log('Starting authentication...');
+      }
       // Authenticate with TrustRails API
       await this.authenticate();
       this.isAuthenticated = true;
+      if (this.isDevelopment) {
+        console.log('Authentication successful!');
+      }
+
+      // If user email is provided and we don't have a user session, create/retrieve user
+      if (this.userEmail && !this.isUserSessionReady) {
+        if (this.isDevelopment) {
+          console.log('User email provided, creating/retrieving user session...');
+        }
+        await this.handleUserEmailFlow();
+      }
     } catch (err) {
       this.error = err instanceof Error ? err.message : 'Failed to initialize widget';
+      console.error('Authentication failed:', err);
     } finally {
       this.isLoading = false;
     }
@@ -251,6 +471,12 @@ export class TrustRailsWidget extends LitElement {
     const apiUrl = this.environment === 'production'
       ? 'https://api.trustrails.com/api/widget/auth'
       : 'http://localhost:3000/api/widget/auth';
+
+    if (this.isDevelopment) {
+      console.log('Authenticating with:', apiUrl);
+      console.log('Partner ID:', this.partnerId);
+      console.log('API Key:', this.apiKey ? `${this.apiKey.substring(0, 20)}...` : 'not set');
+    }
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -276,26 +502,237 @@ export class TrustRailsWidget extends LitElement {
     this.bearerToken = data.bearer_token;
     this.sessionId = data.session_id;
 
+    if (this.isDevelopment) {
+      console.log('Widget storing tokens:', {
+        bearerToken: this.bearerToken ? `${this.bearerToken.substring(0, 40)}...` : 'none',
+        sessionId: this.sessionId
+      });
+    }
+
     // Store in session storage for persistence
     if (typeof sessionStorage !== 'undefined' && this.bearerToken && this.sessionId) {
       sessionStorage.setItem('trustrails_bearer_token', this.bearerToken);
       sessionStorage.setItem('trustrails_session_id', this.sessionId);
+      if (this.isDevelopment) {
+        console.log('✅ Tokens stored in sessionStorage');
+      }
     }
 
     return data;
+  }
+
+  private async handleUserEmailFlow() {
+    if (!this.userEmail) {
+      if (this.isDevelopment) {
+        console.log('No user email provided, skipping user session creation');
+      }
+      return;
+    }
+
+    if (!this.bearerToken) {
+      throw new Error('Cannot create user session: no bearer token available');
+    }
+
+    try {
+      if (this.isDevelopment) {
+        console.log('Creating/retrieving user session for email:', this.userEmail);
+      }
+
+      const userResult = await this.createUserAccount(this.userEmail);
+
+      this.userSession = {
+        user_id: userResult.user.id,
+        email: userResult.user.email,
+        is_new_user: userResult.is_new_user,
+        created_at: userResult.user.created_at,
+        partner_id: this.partnerId
+      };
+
+      this.isUserSessionReady = true;
+
+      // Store user session in sessionStorage
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('trustrails_user_session', JSON.stringify(this.userSession));
+        if (this.isDevelopment) {
+          console.log('✅ User session stored in sessionStorage');
+        }
+      }
+
+      if (this.isDevelopment) {
+        console.log('✅ User session ready:', {
+          userId: this.userSession.user_id,
+          email: this.userSession.email,
+          isNewUser: this.userSession.is_new_user
+        });
+      }
+
+      // Dispatch user session ready event
+      this.dispatchEvent(new CustomEvent('trustrails-user-ready', {
+        detail: {
+          userId: this.userSession.user_id,
+          email: this.userSession.email,
+          isNewUser: this.userSession.is_new_user,
+          userSession: this.userSession
+        },
+        bubbles: true,
+        composed: true
+      }));
+
+    } catch (error) {
+      console.error('Failed to create/retrieve user session:', error);
+      throw new Error(`User session creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async createUserAccount(email: string) {
+    if (!this.bearerToken) {
+      throw new Error('No bearer token available for user account creation');
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new Error('Invalid email format provided');
+    }
+
+    const apiUrl = this.environment === 'production'
+      ? 'https://api.trustrails.com/api/widget/create-account'
+      : 'http://localhost:3000/api/widget/create-account';
+
+    if (this.isDevelopment) {
+      console.log('Creating account for email:', email);
+    }
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.bearerToken}`,
+        'X-TrustRails-Partner-ID': this.partnerId
+      },
+      body: JSON.stringify({
+        auth_type: 'email',
+        email: email,
+        partner_id: this.partnerId,
+        widget_version: '1.0.0',
+        timestamp: new Date().toISOString()
+      })
+    });
+
+    if (!response.ok) {
+      let errorMessage = `Account creation failed: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (parseError) {
+        console.error('Error parsing error response:', parseError);
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    if (this.isDevelopment) {
+      console.log('Account creation/retrieval successful:', {
+        userId: result.user.id,
+        isNewUser: result.is_new_user
+      });
+    }
+
+    return result;
   }
 
   private handleStartRollover() {
     this.currentStep = 1;
     // Dispatch custom event that parent can listen to
     this.dispatchEvent(new CustomEvent('trustrails-start', {
-      detail: { partnerId: this.partnerId, sessionId: this.sessionId },
+      detail: {
+        partnerId: this.partnerId,
+        sessionId: this.sessionId,
+        userId: this.userSession?.user_id || null,
+        userEmail: this.userSession?.email || null
+      },
       bubbles: true,
       composed: true
     }));
   }
 
+  // Public getter methods for partner integration
+  public getUserSession() {
+    return this.userSession;
+  }
+
+  public getUserId(): string | null {
+    return this.userSession?.user_id || null;
+  }
+
+  public getUserEmail(): string | null {
+    return this.userSession?.email || null;
+  }
+
+  public isUserReady(): boolean {
+    return this.isUserSessionReady && this.userSession !== null;
+  }
+
+  // Validate that the stored user session matches the current email
+  private validateUserSession(): boolean {
+    if (!this.userSession || !this.userEmail) {
+      return false;
+    }
+
+    // Check if the stored user session matches the current email
+    if (this.userSession.email !== this.userEmail) {
+      if (this.isDevelopment) {
+        console.log('Stored user session email mismatch:', {
+          stored: this.userSession.email,
+          current: this.userEmail
+        });
+      }
+      return false;
+    }
+
+    // Check if the stored session belongs to the current partner
+    if (this.userSession.partner_id !== this.partnerId) {
+      if (this.isDevelopment) {
+        console.log('Stored user session partner mismatch:', {
+          stored: this.userSession.partner_id,
+          current: this.userSession.partner_id
+        });
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  // Public method to refresh user session (useful for debugging or partner integration)
+  public async refreshUserSession(): Promise<void> {
+    if (!this.userEmail) {
+      throw new Error('No user email provided for session refresh');
+    }
+
+    if (!this.isAuthenticated || !this.bearerToken) {
+      throw new Error('Widget not authenticated');
+    }
+
+    if (this.isDevelopment) {
+      console.log('Refreshing user session for:', this.userEmail);
+    }
+
+    // Clear existing session
+    this.userSession = null;
+    this.isUserSessionReady = false;
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('trustrails_user_session');
+    }
+
+    // Create new session
+    await this.handleUserEmailFlow();
+  }
+
+  // Legacy method for backward compatibility
   async createAccount(authType: 'oauth' | 'email', data: any) {
+    console.warn('createAccount method is deprecated. Use the user-email attribute for automatic user session management.');
+
     if (!this.bearerToken) {
       throw new Error('No bearer token available');
     }
@@ -308,20 +745,47 @@ export class TrustRailsWidget extends LitElement {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.bearerToken}`
+        'Authorization': `Bearer ${this.bearerToken}`,
+        'X-TrustRails-Partner-ID': this.partnerId
       },
       body: JSON.stringify({
         auth_type: authType,
+        partner_id: this.partnerId,
+        widget_version: '1.0.0',
+        timestamp: new Date().toISOString(),
         ...data
       })
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `Account creation failed: ${response.statusText}`);
+      let errorMessage = `Account creation failed: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (parseError) {
+        console.error('Error parsing error response:', parseError);
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
+
+    // Update user session if this was an email account creation
+    if (authType === 'email' && data.email) {
+      this.userSession = {
+        user_id: result.user.id,
+        email: result.user.email,
+        is_new_user: result.is_new_user,
+        created_at: result.user.created_at,
+        partner_id: this.partnerId
+      };
+      this.isUserSessionReady = true;
+
+      // Store user session in sessionStorage
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('trustrails_user_session', JSON.stringify(this.userSession));
+      }
+    }
 
     // Dispatch event for account created
     this.dispatchEvent(new CustomEvent('trustrails-account-created', {
@@ -346,18 +810,33 @@ export class TrustRailsWidget extends LitElement {
       ? `https://api.trustrails.com${endpoint}`
       : `http://localhost:3000${endpoint}`;
 
+    // Include user context in headers if available
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this.bearerToken}`,
+      'X-TrustRails-Partner-ID': this.partnerId,
+      ...options.headers as Record<string, string>
+    };
+
+    // Add user context if available
+    if (this.userSession?.user_id) {
+      headers['X-TrustRails-User-ID'] = this.userSession.user_id;
+    }
+
     const response = await fetch(apiUrl, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.bearerToken}`,
-        ...options.headers
-      }
+      headers
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `API call failed: ${response.statusText}`);
+      let errorMessage = `API call failed: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (parseError) {
+        console.error('Error parsing API error response:', parseError);
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -367,6 +846,55 @@ export class TrustRailsWidget extends LitElement {
     super.updated(changedProperties);
     if (changedProperties.has('theme')) {
       this.applyTheme();
+    }
+
+    // Handle user email changes
+    if (changedProperties.has('userEmail')) {
+      this.handleUserEmailChange(changedProperties.get('userEmail') as string);
+    }
+  }
+
+  private async handleUserEmailChange(previousEmail: string) {
+    // Only handle email changes if we're already authenticated
+    if (!this.isAuthenticated || !this.bearerToken) {
+      return;
+    }
+
+    const currentEmail = this.userEmail;
+
+    // If email was cleared
+    if (!currentEmail && previousEmail) {
+      if (this.isDevelopment) {
+        console.log('User email cleared, clearing user session');
+      }
+      this.userSession = null;
+      this.isUserSessionReady = false;
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('trustrails_user_session');
+      }
+      return;
+    }
+
+    // If email changed to a different value
+    if (currentEmail && currentEmail !== previousEmail) {
+      if (this.isDevelopment) {
+        console.log('User email changed, creating new user session:', currentEmail);
+      }
+
+      // Clear existing session
+      this.userSession = null;
+      this.isUserSessionReady = false;
+
+      try {
+        this.isLoading = true;
+        this.error = null;
+        await this.handleUserEmailFlow();
+      } catch (error) {
+        console.error('Failed to handle user email change:', error);
+        this.error = error instanceof Error ? error.message : 'Failed to update user session';
+      } finally {
+        this.isLoading = false;
+      }
     }
   }
 
@@ -389,6 +917,18 @@ export class TrustRailsWidget extends LitElement {
             <div class="spinner"></div>
           </div>
         ` : this.isAuthenticated ? html`
+          ${this.userEmail ? html`
+            <div class="user-status ${this.isUserSessionReady ? 'ready' : ''}">
+              <div class="user-status-indicator"></div>
+              <span>
+                ${this.isUserSessionReady
+                  ? `User session ready for ${this.userEmail}${this.userSession?.is_new_user ? ' (new user)' : ''}`
+                  : `Setting up user session for ${this.userEmail}...`
+                }
+              </span>
+            </div>
+          ` : ''}
+
           ${this.currentStep > 0 ? html`
             <div class="steps">
               <div class="step ${this.currentStep >= 1 ? 'active' : ''}">
@@ -417,8 +957,12 @@ export class TrustRailsWidget extends LitElement {
                 Move your retirement savings to a better plan in minutes.
                 We'll guide you through every step of the process.
               </p>
-              <button class="button" @click=${this.handleStartRollover}>
-                Get Started
+              <button
+                class="button"
+                @click=${this.handleStartRollover}
+                ?disabled=${this.userEmail && !this.isUserSessionReady}
+              >
+                ${this.userEmail && !this.isUserSessionReady ? 'Setting up session...' : 'Get Started'}
               </button>
             </div>
           ` : html`

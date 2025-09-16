@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Widget Authentication Test | TrustRails</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 30px;
+      margin-bottom: 30px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    }
+
+    h1 {
+      font-size: 32px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      color: #6b7280;
+      font-size: 16px;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 30px;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #1f2937;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #374151;
+      margin-bottom: 8px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.2s;
+      font-family: 'Monaco', 'Courier New', monospace;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 4px;
+    }
+
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-connected {
+      background: #10b981;
+      color: white;
+    }
+
+    .status-disconnected {
+      background: #ef4444;
+      color: white;
+    }
+
+    .log-container {
+      background: #1f2937;
+      border-radius: 8px;
+      padding: 16px;
+      height: 400px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    .log-entry {
+      padding: 8px;
+      margin: 4px 0;
+      border-left: 3px solid #4b5563;
+      background: rgba(255, 255, 255, 0.05);
+      color: #e5e7eb;
+      word-break: break-all;
+    }
+
+    .log-success {
+      border-left-color: #10b981;
+      background: rgba(16, 185, 129, 0.1);
+      color: #10b981;
+    }
+
+    .log-error {
+      border-left-color: #ef4444;
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+    }
+
+    .log-info {
+      border-left-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.1);
+      color: #60a5fa;
+    }
+
+    .log-warning {
+      border-left-color: #f59e0b;
+      background: rgba(245, 158, 11, 0.1);
+      color: #fbbf24;
+    }
+
+    .widget-container {
+      border: 2px dashed #e5e7eb;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      min-height: 400px;
+      background: #f9fafb;
+    }
+
+    .storage-display {
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 20px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      font-weight: 500;
+      color: #6b7280;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      color: #667eea;
+      border-bottom-color: #667eea;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .network-monitor {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      border: 2px solid #667eea;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+      max-width: 400px;
+      display: none;
+    }
+
+    .network-monitor.active {
+      display: block;
+    }
+
+    .monitor-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #1f2937;
+    }
+
+    .monitor-content {
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 11px;
+      color: #4b5563;
+    }
+
+    .icon {
+      width: 20px;
+      height: 20px;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    @media (max-width: 1024px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🧪 Widget Authentication Tester</h1>
+      <p class="subtitle">Test the complete authentication flow from API key to bearer token</p>
+    </header>
+
+    <div class="main-grid">
+      <!-- Configuration Panel -->
+      <div class="panel">
+        <h2 class="section-title">
+          ⚙️ Configuration
+          <span id="status" class="status-badge status-disconnected">Not Connected</span>
+        </h2>
+
+        <div class="form-group">
+          <label for="custodianId">Custodian ID</label>
+          <select id="custodianId">
+            <option value="">-- Select a Custodian --</option>
+            <option value="ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8">Empower</option>
+            <option value="demo-custodian">Demo Custodian</option>
+            <option value="custom">Custom ID...</option>
+          </select>
+          <input type="text" id="customCustodianId" placeholder="Enter custom ID" style="display:none; margin-top:10px;" />
+        </div>
+
+        <div class="form-group">
+          <label for="apiKey">Public API Key</label>
+          <input type="text" id="apiKey" placeholder="tr_test_pk_xxxxx or tr_live_pk_xxxxx" />
+          <div class="hint">Get this from Integrations → Widget tab</div>
+        </div>
+
+        <div class="form-group">
+          <label for="userEmail">User Email (Optional)</label>
+          <input type="email" id="userEmail" placeholder="user@company.com" />
+          <div class="hint">Leave empty for anonymous widget testing</div>
+        </div>
+
+        <div class="form-group">
+          <label for="environment">Environment</label>
+          <select id="environment">
+            <option value="sandbox">Sandbox (Testing)</option>
+            <option value="production">Production</option>
+          </select>
+        </div>
+
+        <div class="button-group">
+          <button onclick="generateTestKey()">🔑 Generate Test Key</button>
+          <button onclick="initWidget()" id="initBtn">🚀 Initialize Widget</button>
+          <button onclick="initWidgetWithEmail()" id="initEmailBtn">👤 Initialize with Email</button>
+          <button onclick="testUserEmailChange()" id="emailChangeBtn" disabled>📧 Change User Email</button>
+          <button onclick="testAuth()" id="authBtn" disabled>🔐 Test Auth</button>
+          <button onclick="testAPI()" id="apiBtn" disabled>📡 Test API</button>
+          <button onclick="clearAll()">🗑️ Clear All</button>
+        </div>
+
+        <h3 class="section-title" style="margin-top: 30px;">📦 Session Storage</h3>
+        <div class="storage-display" id="storageDisplay">
+          No session data yet...
+        </div>
+
+        <h3 class="section-title" style="margin-top: 20px;">👤 User Session Info</h3>
+        <div class="storage-display" id="userSessionDisplay">
+          No user session yet...
+        </div>
+      </div>
+
+      <!-- Logs Panel -->
+      <div class="panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="auth">Authentication Log</button>
+          <button class="tab" data-tab="network">Network Monitor</button>
+          <button class="tab" data-tab="widget">Widget Output</button>
+        </div>
+
+        <div id="authTab" class="tab-content active">
+          <div class="log-container" id="authLog">
+            <div class="log-entry log-info">⏳ Waiting for initialization...</div>
+          </div>
+        </div>
+
+        <div id="networkTab" class="tab-content">
+          <div class="log-container" id="networkLog">
+            <div class="log-entry log-info">📡 Network requests will appear here...</div>
+          </div>
+        </div>
+
+        <div id="widgetTab" class="tab-content">
+          <div class="widget-container" id="widgetContainer">
+            <p style="color: #9ca3af; text-align: center;">Widget will load here after initialization...</p>
+          </div>
+
+          <h3 style="margin: 20px 0 10px 0; color: #1f2937;">📋 Sample Code</h3>
+          <div style="background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; font-family: 'Monaco', 'Courier New', monospace; font-size: 12px;">
+            <div style="margin-bottom: 15px;">
+              <strong style="color: #1f2937;">Basic Usage (Anonymous):</strong>
+              <pre style="margin: 5px 0; color: #4b5563;"><code>&lt;trustrails-widget
+  partner-id="your-partner-id"
+  api-key="your-api-key"
+  environment="production"&gt;
+&lt;/trustrails-widget&gt;</code></pre>
+            </div>
+            <div>
+              <strong style="color: #1f2937;">With User Tracking:</strong>
+              <pre style="margin: 5px 0; color: #4b5563;"><code>&lt;trustrails-widget
+  partner-id="your-partner-id"
+  api-key="your-api-key"
+  user-email="user@company.com"
+  environment="production"&gt;
+&lt;/trustrails-widget&gt;</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Network Monitor Popup -->
+  <div id="networkMonitor" class="network-monitor">
+    <div class="monitor-title">🔍 Last Request Details</div>
+    <div class="monitor-content" id="monitorContent"></div>
+  </div>
+
+  <!-- Preload the widget module -->
+  <script type="module" src="/src/widget-loader.js"></script>
+
+  <script type="module">
+    let bearerToken = null;
+    let sessionId = null;
+    let widgetElement = null;
+    let requestCount = 0;
+
+    // Override fetch to monitor requests
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const [url, options = {}] = args;
+      const reqId = ++requestCount;
+
+      // Log request
+      const method = options.method || 'GET';
+      logNetwork(`[${reqId}] 📤 ${method} ${url}`, 'info');
+
+      // Check headers
+      if (options.headers) {
+        if (options.headers['X-TrustRails-API-Key']) {
+          const key = options.headers['X-TrustRails-API-Key'];
+          logAuth(`🔑 Request ${reqId} using Public API Key: ${key.substring(0, 25)}...`, 'info');
+          showMonitor('Public API Key', key, method, url);
+        }
+        if (options.headers['Authorization']) {
+          const auth = options.headers['Authorization'];
+          if (auth.startsWith('Bearer ')) {
+            const token = auth.substring(7);
+            logAuth(`🎫 Request ${reqId} using Bearer Token: ${token.substring(0, 30)}...`, 'success');
+            showMonitor('Bearer Token', token, method, url);
+          }
+        }
+      }
+
+      // Make request
+      try {
+        const response = await originalFetch.apply(this, args);
+        const status = response.ok ? 'success' : 'error';
+        logNetwork(`[${reqId}] 📥 ${response.status} ${response.statusText}`, status);
+
+        // Clone and check response
+        const cloned = response.clone();
+        const contentType = response.headers.get('content-type');
+
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const data = await cloned.json();
+
+            // Check for auth response
+            if (url.includes('/api/widget/auth') && data.bearer_token) {
+              bearerToken = data.bearer_token;
+              sessionId = data.session_id;
+
+              // Store in sessionStorage like the widget does
+              sessionStorage.setItem('trustrails_bearer_token', bearerToken);
+              sessionStorage.setItem('trustrails_session_id', sessionId);
+
+              logAuth(`✅ Authentication Successful!`, 'success');
+              logAuth(`🎫 Bearer Token: ${bearerToken.substring(0, 40)}...`, 'success');
+              logAuth(`🔑 Session ID: ${sessionId}`, 'success');
+              updateStatus('connected');
+              updateStorage();
+              document.getElementById('apiBtn').disabled = false;
+            }
+
+            // Check for account creation
+            if (url.includes('/api/widget/create-account') && data.user) {
+              logAuth(`✅ Account Created: ${data.user.email} (ID: ${data.user.id})`, 'success');
+
+              // Store user session info
+              const userSession = {
+                user_id: data.user.id,
+                email: data.user.email,
+                is_new_user: data.is_new_user,
+                created_at: data.user.created_at
+              };
+              sessionStorage.setItem('trustrails_user_session', JSON.stringify(userSession));
+              updateUserSession();
+            }
+          } catch (e) {
+            // Not JSON or parse error
+          }
+        }
+
+        return response;
+      } catch (error) {
+        logNetwork(`[${reqId}] ❌ ${error.message}`, 'error');
+        throw error;
+      }
+    };
+
+    window.updateCustodianId = function() {
+      const select = document.getElementById('custodianId');
+      const custom = document.getElementById('customCustodianId');
+
+      if (select.value === 'custom') {
+        custom.style.display = 'block';
+      } else {
+        custom.style.display = 'none';
+      }
+    }
+
+    function getCustodianId() {
+      const select = document.getElementById('custodianId');
+      if (select.value === 'custom') {
+        return document.getElementById('customCustodianId').value;
+      }
+      return select.value;
+    }
+
+    function generateTestKey() {
+      // Generate a fake test key for demo purposes
+      const prefix = 'tr_test_pk_';
+      const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let key = prefix;
+      for (let i = 0; i < 32; i++) {
+        key += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      document.getElementById('apiKey').value = key;
+      logAuth(`🔑 Generated test key: ${key}`, 'info');
+    }
+
+    function logAuth(message, type = 'info') {
+      const log = document.getElementById('authLog');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      const time = new Date().toLocaleTimeString();
+      entry.innerHTML = `<span style="opacity: 0.7">[${time}]</span> ${message}`;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function logNetwork(message, type = 'info') {
+      const log = document.getElementById('networkLog');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      const time = new Date().toLocaleTimeString();
+      entry.innerHTML = `<span style="opacity: 0.7">[${time}]</span> ${message}`;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function updateStatus(status) {
+      const badge = document.getElementById('status');
+      badge.className = `status-badge status-${status}`;
+      badge.textContent = status === 'connected' ? 'Connected' : 'Not Connected';
+    }
+
+    function updateStorage() {
+      const display = document.getElementById('storageDisplay');
+      const token = sessionStorage.getItem('trustrails_bearer_token');
+      const session = sessionStorage.getItem('trustrails_session_id');
+
+      display.innerHTML = `
+        <strong>Bearer Token:</strong><br>
+        ${token ? token.substring(0, 60) + '...' : 'Not found'}<br><br>
+        <strong>Session ID:</strong><br>
+        ${session || 'Not found'}
+      `;
+    }
+
+    function updateUserSession() {
+      const display = document.getElementById('userSessionDisplay');
+      const userSession = sessionStorage.getItem('trustrails_user_session');
+
+      if (userSession) {
+        try {
+          const parsed = JSON.parse(userSession);
+          display.innerHTML = `
+            <strong>User ID:</strong> ${parsed.user_id}<br>
+            <strong>Email:</strong> ${parsed.email}<br>
+            <strong>Is New User:</strong> ${parsed.is_new_user ? 'Yes' : 'No'}<br>
+            <strong>Created At:</strong> ${parsed.created_at || 'N/A'}
+          `;
+        } catch (e) {
+          display.innerHTML = 'Invalid user session data';
+        }
+      } else {
+        display.innerHTML = 'No user session yet...';
+      }
+    }
+
+    function showMonitor(type, value, method, url) {
+      const monitor = document.getElementById('networkMonitor');
+      const content = document.getElementById('monitorContent');
+
+      content.innerHTML = `
+        <strong>Type:</strong> ${type}<br>
+        <strong>Method:</strong> ${method}<br>
+        <strong>URL:</strong> ${url}<br>
+        <strong>Value:</strong> ${value.substring(0, 50)}...
+      `;
+
+      monitor.classList.add('active');
+      setTimeout(() => {
+        monitor.classList.remove('active');
+      }, 3000);
+    }
+
+    window.switchTab = function(tab) {
+      // Update tabs
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      // Active selected
+      document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+      document.getElementById(`${tab}Tab`).classList.add('active');
+    }
+
+    window.initWidget = async function() {
+      await initWidgetInternal(false);
+    };
+
+    window.initWidgetWithEmail = async function() {
+      const userEmail = document.getElementById('userEmail').value;
+      if (!userEmail) {
+        alert('Please enter a user email address');
+        return;
+      }
+      await initWidgetInternal(true);
+    };
+
+    async function initWidgetInternal(withEmail) {
+      const custodianId = getCustodianId();
+      const apiKey = document.getElementById('apiKey').value;
+      const environment = document.getElementById('environment').value;
+      const userEmail = withEmail ? document.getElementById('userEmail').value : '';
+
+      if (!custodianId || !apiKey) {
+        alert('Please select a custodian and enter an API key');
+        return;
+      }
+
+      logAuth(`🚀 Initializing widget${withEmail ? ' with user email' : ' (anonymous)'}...`, 'info');
+      if (withEmail) {
+        logAuth(`📧 User Email: ${userEmail}`, 'info');
+      }
+
+      const container = document.getElementById('widgetContainer');
+      container.innerHTML = '';
+
+      // Wait for widget to be defined (it's preloaded now)
+      try {
+        await customElements.whenDefined('trustrails-widget');
+        logAuth('✅ Widget element is defined', 'success');
+      } catch (error) {
+        logAuth(`❌ Error waiting for widget: ${error.message}`, 'error');
+        return;
+      }
+
+      // Create widget using innerHTML to avoid createElement issues
+      const widgetHTML = `
+        <trustrails-widget
+          partner-id="${custodianId}"
+          api-key="${apiKey}"
+          environment="${environment}"
+          ${withEmail ? `user-email="${userEmail}"` : ''}>
+        </trustrails-widget>
+      `;
+
+      container.innerHTML = widgetHTML;
+      widgetElement = container.querySelector('trustrails-widget');
+
+      // Add listeners
+      widgetElement.addEventListener('trustrails-start', (e) => {
+        logAuth(`📢 Widget Event: Rollover Started`, 'info');
+        logAuth(`📄 Event Detail: ${JSON.stringify(e.detail)}`, 'info');
+      });
+
+      widgetElement.addEventListener('trustrails-user-ready', (e) => {
+        logAuth(`📢 Widget Event: User Session Ready!`, 'success');
+        logAuth(`👤 User ID: ${e.detail.userId}`, 'success');
+        logAuth(`📧 Email: ${e.detail.email}`, 'success');
+        logAuth(`🆕 Is New User: ${e.detail.isNewUser}`, 'success');
+        updateUserSession();
+      });
+
+      widgetElement.addEventListener('trustrails-account-created', (e) => {
+        logAuth(`📢 Widget Event: Account Created - ${JSON.stringify(e.detail)}`, 'success');
+        updateUserSession();
+      });
+
+      logAuth('✅ Widget added to DOM', 'success');
+      logAuth('⏳ Widget checking for existing session or authenticating...', 'info');
+
+      // Check if there's already a session
+      const existingToken = sessionStorage.getItem('trustrails_bearer_token');
+      const existingSession = sessionStorage.getItem('trustrails_session_id');
+
+      if (existingToken && existingSession) {
+        bearerToken = existingToken;
+        sessionId = existingSession;
+        logAuth('✅ Found existing session!', 'success');
+        logAuth(`🎫 Bearer Token: ${bearerToken.substring(0, 40)}...`, 'success');
+        logAuth(`🔑 Session ID: ${sessionId}`, 'success');
+        updateStatus('connected');
+        updateStorage();
+        document.getElementById('apiBtn').disabled = false;
+        document.getElementById('authBtn').disabled = false;
+        document.getElementById('emailChangeBtn').disabled = false;
+      } else {
+        logAuth('🔐 No existing session, widget will authenticate...', 'info');
+        document.getElementById('authBtn').disabled = false;
+      }
+
+      // Update user session display
+      updateUserSession();
+    }
+
+    window.testUserEmailChange = function() {
+      if (!widgetElement) {
+        alert('Please initialize the widget first');
+        return;
+      }
+
+      const newEmail = prompt('Enter new user email:');
+      if (newEmail) {
+        logAuth(`📧 Changing user email to: ${newEmail}`, 'info');
+        widgetElement.setAttribute('user-email', newEmail);
+        document.getElementById('userEmail').value = newEmail;
+      }
+    };
+
+    window.testAuth = async function() {
+      const custodianId = getCustodianId();
+      const apiKey = document.getElementById('apiKey').value;
+
+      logAuth('🔐 Testing manual authentication...', 'info');
+
+      try {
+        const response = await fetch('http://localhost:3000/api/widget/auth', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-TrustRails-API-Key': apiKey,
+            'X-TrustRails-Partner-ID': custodianId
+          },
+          body: JSON.stringify({
+            widget_version: '1.0.0',
+            timestamp: new Date().toISOString()
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Authentication failed');
+        }
+
+        bearerToken = data.bearer_token;
+        sessionId = data.session_id;
+
+        sessionStorage.setItem('trustrails_bearer_token', bearerToken);
+        sessionStorage.setItem('trustrails_session_id', sessionId);
+
+        logAuth('✅ Manual authentication successful!', 'success');
+        updateStorage();
+
+      } catch (error) {
+        logAuth(`❌ Authentication failed: ${error.message}`, 'error');
+      }
+    };
+
+    window.testAPI = async function() {
+      if (!bearerToken) {
+        alert('Please authenticate first');
+        return;
+      }
+
+      logAuth('📡 Testing API call with bearer token...', 'info');
+
+      try {
+        const email = `test${Date.now()}@example.com`;
+
+        const response = await fetch('http://localhost:3000/api/widget/create-account', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${bearerToken}`
+          },
+          body: JSON.stringify({
+            auth_type: 'email',
+            email: email,
+            password: 'TestPassword123!'
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'API call failed');
+        }
+
+        logAuth(`✅ API call successful! Created user: ${email}`, 'success');
+
+      } catch (error) {
+        logAuth(`❌ API call failed: ${error.message}`, 'error');
+      }
+    };
+
+    window.clearAll = function() {
+      sessionStorage.clear();
+      bearerToken = null;
+      sessionId = null;
+      requestCount = 0;
+      widgetElement = null;
+
+      document.getElementById('authLog').innerHTML = '<div class="log-entry log-info">🧹 Cleared</div>';
+      document.getElementById('networkLog').innerHTML = '<div class="log-entry log-info">🧹 Cleared</div>';
+      document.getElementById('widgetContainer').innerHTML = '<p style="color: #9ca3af; text-align: center;">Widget cleared</p>';
+
+      updateStatus('disconnected');
+      updateStorage();
+      updateUserSession();
+
+      document.getElementById('authBtn').disabled = true;
+      document.getElementById('apiBtn').disabled = true;
+      document.getElementById('emailChangeBtn').disabled = true;
+    };
+
+    // Attach event listeners
+    document.getElementById('custodianId').addEventListener('change', updateCustodianId);
+
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        const tabName = e.target.getAttribute('data-tab');
+        switchTab(tabName);
+      });
+    });
+
+    // Initialize on load
+    updateStorage();
+    updateUserSession();
+  </script>
+</body>
+</html>

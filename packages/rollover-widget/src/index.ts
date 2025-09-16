@@ -5,10 +5,10 @@
  * on any website using Web Components technology.
  */
 
-export { TrustRailsWidget } from './trustrails-widget.js';
+export { TrustRailsWidget } from './trustrails-widget';
 
 // Auto-register the web component when this module is imported
-import './trustrails-widget.js';
+import './trustrails-widget';
 
 // Export types for TypeScript consumers
 export interface TrustRailsWidgetConfig {

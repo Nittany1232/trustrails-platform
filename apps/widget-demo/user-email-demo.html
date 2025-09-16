@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrustRails Widget - User Email Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .header {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      color: #333;
+    }
+    .description {
+      color: #666;
+      margin: 0;
+    }
+    .demo-section {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .demo-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    .integration-code {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 14px;
+      overflow-x: auto;
+    }
+    .code-label {
+      font-size: 12px;
+      color: #6c757d;
+      margin-bottom: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .controls {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .control-group:last-child {
+      margin-bottom: 0;
+    }
+    label {
+      font-weight: 600;
+      min-width: 120px;
+    }
+    input {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      flex: 1;
+      max-width: 300px;
+    }
+    button {
+      background: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button:hover {
+      background: #1557b0;
+    }
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    .log-container {
+      background: #1a1a1a;
+      color: #fff;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      margin-bottom: 5px;
+      word-break: break-word;
+    }
+    .log-entry.info { color: #4fc3f7; }
+    .log-entry.success { color: #81c784; }
+    .log-entry.error { color: #e57373; }
+    .log-entry.warning { color: #ffb74d; }
+    .feature-highlight {
+      background: #e8f4fd;
+      border: 1px solid #2196f3;
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    .feature-highlight h3 {
+      margin: 0 0 10px 0;
+      color: #1976d2;
+    }
+    .feature-highlight ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .widget-container {
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      padding: 20px;
+      background: #fafafa;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>TrustRails Widget - User Email Demo</h1>
+      <p class="description">Test the new user email handling functionality with automatic user session management</p>
+    </div>
+
+    <div class="feature-highlight">
+      <h3>🎯 New User Email Features</h3>
+      <ul>
+        <li><strong>Automatic User Session:</strong> When user-email is provided, the widget automatically creates/retrieves user accounts</li>
+        <li><strong>Session Persistence:</strong> User sessions are stored in sessionStorage and survive page refreshes</li>
+        <li><strong>Dynamic Email Changes:</strong> Change the email attribute and watch the widget update the user session</li>
+        <li><strong>Validation & Recovery:</strong> Sessions are validated against current email and partner ID</li>
+        <li><strong>Event System:</strong> Listen for 'trustrails-user-ready' events to know when user sessions are established</li>
+      </ul>
+    </div>
+
+    <!-- Interactive Controls -->
+    <div class="demo-section">
+      <div class="demo-title">Interactive Demo Controls</div>
+      <div class="controls">
+        <div class="control-group">
+          <label for="email-input">User Email:</label>
+          <input
+            type="email"
+            id="email-input"
+            placeholder="Enter user email address"
+            value="john.doe@example.com">
+          <button onclick="updateUserEmail()">Update Email</button>
+        </div>
+        <div class="control-group">
+          <label for="partner-input">Partner ID:</label>
+          <input
+            type="text"
+            id="partner-input"
+            value="demo-partner"
+            readonly>
+          <button onclick="refreshUserSession()" id="refresh-btn" disabled>Refresh Session</button>
+        </div>
+        <div class="control-group">
+          <label>Widget State:</label>
+          <span id="widget-status">Not initialized</span>
+          <button onclick="clearAllSessions()">Clear All Sessions</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Widget Demo with User Email -->
+    <div class="demo-section">
+      <div class="demo-title">Widget with User Email</div>
+      <div class="widget-container">
+        <trustrails-widget
+          id="email-widget"
+          partner-id="demo-partner"
+          api-key="tr_test_pk_demo12345678901234567890"
+          user-email="john.doe@example.com"
+          environment="sandbox">
+        </trustrails-widget>
+      </div>
+
+      <div class="integration-code">
+        <div class="code-label">HTML Integration with User Email</div>
+        <pre>&lt;trustrails-widget
+  partner-id="your-partner-id"
+  api-key="your-api-key"
+  user-email="user@example.com"
+  environment="production"&gt;
+&lt;/trustrails-widget&gt;</pre>
+      </div>
+    </div>
+
+    <!-- JavaScript API Demo -->
+    <div class="demo-section">
+      <div class="demo-title">JavaScript API Methods</div>
+      <div class="controls">
+        <div class="control-group">
+          <button onclick="testGetUserSession()">Get User Session</button>
+          <button onclick="testGetUserId()">Get User ID</button>
+          <button onclick="testGetUserEmail()">Get User Email</button>
+          <button onclick="testIsUserReady()">Check User Ready</button>
+        </div>
+      </div>
+
+      <div class="integration-code">
+        <div class="code-label">JavaScript API Usage</div>
+        <pre>const widget = document.querySelector('trustrails-widget');
+
+// Check if user session is ready
+if (widget.isUserReady()) {
+  console.log('User ID:', widget.getUserId());
+  console.log('User Email:', widget.getUserEmail());
+  console.log('Full Session:', widget.getUserSession());
+}
+
+// Refresh user session if needed
+await widget.refreshUserSession();
+
+// Listen for user session events
+widget.addEventListener('trustrails-user-ready', (event) => {
+  console.log('User session ready:', event.detail);
+});</pre>
+      </div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="demo-section">
+      <div class="demo-title">Event Log</div>
+      <button onclick="clearLog()">Clear Log</button>
+      <div id="event-log" class="log-container">
+        <div class="log-entry info">Event log initialized. Interact with the widget to see events.</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import the widget from local development
+    import '@trustrails/rollover-widget';
+
+    let widget;
+    let logContainer;
+
+    // Initialize when DOM is loaded
+    document.addEventListener('DOMContentLoaded', () => {
+      widget = document.querySelector('#email-widget');
+      logContainer = document.getElementById('event-log');
+
+      // Set up event listeners
+      setupEventListeners();
+
+      // Initial status update
+      updateWidgetStatus();
+
+      // Enable refresh button when widget is ready
+      setTimeout(() => {
+        if (widget) {
+          document.getElementById('refresh-btn').disabled = false;
+        }
+      }, 2000);
+
+      logEvent('info', 'Demo initialized successfully');
+    });
+
+    function setupEventListeners() {
+      if (!widget) return;
+
+      // Widget authentication events
+      widget.addEventListener('trustrails-user-ready', (event) => {
+        logEvent('success', `User session ready: ${JSON.stringify(event.detail, null, 2)}`);
+        updateWidgetStatus();
+      });
+
+      widget.addEventListener('trustrails-start', (event) => {
+        logEvent('info', `Rollover process started: ${JSON.stringify(event.detail, null, 2)}`);
+      });
+
+      widget.addEventListener('trustrails-account-created', (event) => {
+        logEvent('info', `Account created (legacy event): ${JSON.stringify(event.detail, null, 2)}`);
+      });
+
+      // Monitor widget property changes
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes') {
+            logEvent('info', `Widget attribute changed: ${mutation.attributeName} = ${widget.getAttribute(mutation.attributeName)}`);
+            updateWidgetStatus();
+          }
+        });
+      });
+
+      observer.observe(widget, { attributes: true });
+    }
+
+    function logEvent(type, message) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${timestamp}] ${message}`;
+
+      if (logContainer) {
+        logContainer.appendChild(entry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+      }
+    }
+
+    function updateWidgetStatus() {
+      const statusElement = document.getElementById('widget-status');
+      if (!widget || !statusElement) return;
+
+      let status = 'Unknown';
+      if (widget.isUserReady()) {
+        const email = widget.getUserEmail();
+        const userId = widget.getUserId();
+        status = `User Ready (${email} - ${userId})`;
+      } else if (widget.userEmail) {
+        status = `Setting up user session for ${widget.userEmail}...`;
+      } else {
+        status = 'No user email provided';
+      }
+
+      statusElement.textContent = status;
+    }
+
+    // Global functions for demo controls
+    window.updateUserEmail = function() {
+      const emailInput = document.getElementById('email-input');
+      const newEmail = emailInput.value.trim();
+
+      if (!newEmail) {
+        logEvent('error', 'Please enter a valid email address');
+        return;
+      }
+
+      if (!widget) {
+        logEvent('error', 'Widget not found');
+        return;
+      }
+
+      logEvent('info', `Updating user email from "${widget.userEmail}" to "${newEmail}"`);
+      widget.userEmail = newEmail;
+      updateWidgetStatus();
+    };
+
+    window.refreshUserSession = async function() {
+      if (!widget) {
+        logEvent('error', 'Widget not found');
+        return;
+      }
+
+      try {
+        logEvent('info', 'Refreshing user session...');
+        await widget.refreshUserSession();
+        logEvent('success', 'User session refreshed successfully');
+        updateWidgetStatus();
+      } catch (error) {
+        logEvent('error', `Failed to refresh user session: ${error.message}`);
+      }
+    };
+
+    window.clearAllSessions = function() {
+      // Clear sessionStorage
+      sessionStorage.removeItem('trustrails_bearer_token');
+      sessionStorage.removeItem('trustrails_session_id');
+      sessionStorage.removeItem('trustrails_user_session');
+
+      logEvent('warning', 'All sessions cleared from storage. Refresh page to see effect.');
+    };
+
+    window.testGetUserSession = function() {
+      if (!widget) return;
+      const session = widget.getUserSession();
+      logEvent('info', `User Session: ${JSON.stringify(session, null, 2)}`);
+    };
+
+    window.testGetUserId = function() {
+      if (!widget) return;
+      const userId = widget.getUserId();
+      logEvent('info', `User ID: ${userId}`);
+    };
+
+    window.testGetUserEmail = function() {
+      if (!widget) return;
+      const email = widget.getUserEmail();
+      logEvent('info', `User Email: ${email}`);
+    };
+
+    window.testIsUserReady = function() {
+      if (!widget) return;
+      const isReady = widget.isUserReady();
+      logEvent('info', `Is User Ready: ${isReady}`);
+    };
+
+    window.clearLog = function() {
+      if (logContainer) {
+        logContainer.innerHTML = '<div class="log-entry info">Log cleared.</div>';
+      }
+    };
+  </script>
+</body>
+</html>
