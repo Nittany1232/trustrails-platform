@@ -22,8 +22,7 @@ npm run test
 trustrails-platform/
 ├── apps/                     # Applications
 │   ├── widget-demo/         # Demo site for testing widget
-│   ├── partner-dashboard/   # Partner configuration portal (TODO)
-│   └── trustrails/         # Main TrustRails app (to be migrated)
+│   └── trustrails/         # Main TrustRails app (to be migrated, includes admin/partners)
 ├── packages/                # Shared packages
 │   ├── rollover-widget/    # Embeddable Web Component widget
 │   ├── api-client/         # TypeScript API client (TODO)
@@ -244,7 +243,7 @@ For questions about:
 1. ✅ Monorepo structure created
 2. ✅ Basic widget implemented
 3. ✅ Demo app created
-4. ⏳ Partner dashboard (TODO)
+4. ⏳ Partner management in admin UI (TODO - see docs/PARTNER_DASHBOARD_INTEGRATION_PLAN.md)
 5. ⏳ DOL data ingestion (TODO)
 6. ⏳ API Gateway setup (TODO)
 7. ⏳ Production deployment (TODO)

@@ -32,7 +32,7 @@ export class TrustRailsWidget extends LitElement {
   @state() private currentStep = 0;
 
   // Scoped styles - won't affect parent page
-  static styles = css`
+  static override styles = css`
     :host {
       display: block;
       font-family: var(--trustrails-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
@@ -201,7 +201,7 @@ export class TrustRailsWidget extends LitElement {
     this.applyTheme();
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     console.log('TrustRails Widget Connected', {
       partnerId: this.partnerId,
@@ -280,14 +280,14 @@ export class TrustRailsWidget extends LitElement {
     }));
   }
 
-  protected updated(changedProperties: PropertyValues) {
+  protected override updated(changedProperties: PropertyValues) {
     super.updated(changedProperties);
     if (changedProperties.has('theme')) {
       this.applyTheme();
     }
   }
 
-  render() {
+  override render() {
     return html`
       <div class="header">
         <div class="logo">TR</div>
