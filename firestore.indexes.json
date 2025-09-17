@@ -1,0 +1,159 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "retirement_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "participants",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchRank",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "retirement_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ein",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "participants",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchRank",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "retirement_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ein",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchRank",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "participants",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "retirement_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "sponsorState",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "participants",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchRank",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "retirement_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "planType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "participants",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchRank",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "retirement_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "participants",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchRank",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "retirement_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "sponsorName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchRank",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "retirement_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchRank",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "participants",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sponsorName",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "retirement_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "sponsorState",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sponsorName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchRank",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

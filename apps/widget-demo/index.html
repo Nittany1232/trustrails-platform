@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TrustRails Widget Demo</title>
+  <title>TrustRails Widget Demo - Search Test</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -97,11 +97,12 @@
 
     <!-- Basic Implementation -->
     <div class="demo-section">
-      <div class="demo-title">Basic Widget Implementation</div>
+      <div class="demo-title">Basic Widget Implementation (Search Only - No Auth)</div>
       <trustrails-widget
-        partner-id="demo-partner"
-        api-key="YOUR_TEST_API_KEY_HERE"
-        environment="sandbox">
+        partner-id="vanguard"
+        api-key="tr_test_pk_abcdefghijklmnopqrstuvwxyz123456"
+        environment="sandbox"
+        api-endpoint="https://searchplans-pixdjghfcq-uc.a.run.app">
       </trustrails-widget>
 
       <div class="integration-code">
@@ -122,9 +123,10 @@
       <div class="demo-title">Custom Themed Widget</div>
       <trustrails-widget
         id="themed-widget"
-        partner-id="demo-partner"
-        api-key="YOUR_TEST_API_KEY_HERE"
-        environment="sandbox">
+        partner-id="fidelity"
+        api-key="tr_test_pk_zyxwvutsrqponmlkjihgfedcba098765"
+        environment="sandbox"
+        api-endpoint="https://searchplans-pixdjghfcq-uc.a.run.app">
       </trustrails-widget>
 
       <div class="integration-code">

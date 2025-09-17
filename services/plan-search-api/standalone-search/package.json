@@ -1,0 +1,26 @@
+{
+  "name": "@trustrails/plan-search-api",
+  "version": "1.0.0",
+  "description": "Retirement plan search API for TrustRails widget",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "functions-framework --target=searchPlans --port=8081",
+    "deploy": "npm run build && gcloud functions deploy searchPlans --gen2 --runtime=nodejs20 --region=us-central1 --memory=2GB --timeout=60s --trigger-http --allow-unauthenticated",
+    "test": "jest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.3.0",
+    "@google-cloud/bigquery": "^7.3.0",
+    "@google-cloud/firestore": "^7.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

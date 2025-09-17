@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrustRails Search Widget - Direct Search Test</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 30px;
+      border-radius: 16px;
+      margin-bottom: 30px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .description {
+      color: #666;
+      margin: 0;
+    }
+    .search-section {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    }
+    .search-box {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    input {
+      flex: 1;
+      padding: 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    button {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    .quick-search {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .quick-btn {
+      padding: 8px 16px;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .quick-btn:hover {
+      background: #e5e7eb;
+    }
+    .results {
+      margin-top: 30px;
+    }
+    .result-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      border: 1px solid #e5e7eb;
+    }
+    .company-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 8px;
+    }
+    .plan-name {
+      color: #6b7280;
+      margin-bottom: 12px;
+    }
+    .details {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .detail-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .detail-label {
+      font-size: 12px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .detail-value {
+      font-size: 14px;
+      color: #374151;
+      font-weight: 500;
+    }
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #6b7280;
+    }
+    .error {
+      background: #fee2e2;
+      color: #dc2626;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #10b981;
+      color: white;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>TrustRails Plan Search <span class="status">API LIVE</span></h1>
+      <p class="description">Direct search of 84,760+ retirement plans from DOL Form 5500 data</p>
+    </div>
+
+    <div class="search-section">
+      <h2>Search Retirement Plans</h2>
+
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Search by company name, EIN, or state..." />
+        <button onclick="performSearch()">Search</button>
+      </div>
+
+      <div class="quick-search">
+        <div style="width: 100%; font-size: 12px; color: #6b7280; margin-bottom: 5px;">Quick searches:</div>
+        <button class="quick-btn" onclick="quickSearch('oracle')">Oracle</button>
+        <button class="quick-btn" onclick="quickSearch('meta')">Meta</button>
+        <button class="quick-btn" onclick="quickSearch('apple')">Apple</button>
+        <button class="quick-btn" onclick="quickSearchEIN('542185193')">EIN: 542185193</button>
+        <button class="quick-btn" onclick="quickSearchState('CA')">California</button>
+        <button class="quick-btn" onclick="quickSearchState('TX')">Texas</button>
+        <button class="quick-btn" onclick="quickSearchState('NY')">New York</button>
+      </div>
+
+      <div id="results"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'https://searchplans-pixdjghfcq-uc.a.run.app';
+
+    async function performSearch() {
+      const query = document.getElementById('searchInput').value.trim();
+      if (!query) return;
+
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
+
+      try {
+        let searchUrl = `${API_URL}?limit=10`;
+
+        // Detect search type
+        if (/^\d{9}$/.test(query)) {
+          // EIN format
+          searchUrl += `&ein=${query}`;
+        } else if (/^[A-Z]{2}$/i.test(query)) {
+          // State code
+          searchUrl += `&state=${query.toUpperCase()}`;
+        } else {
+          // Company name search
+          searchUrl += `&q=${encodeURIComponent(query)}`;
+        }
+
+        const response = await fetch(searchUrl);
+        const data = await response.json();
+
+        if (data.error) {
+          throw new Error(data.message || data.error);
+        }
+
+        displayResults(data.results || [], query);
+      } catch (error) {
+        resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+      }
+    }
+
+    function quickSearch(term) {
+      document.getElementById('searchInput').value = term;
+      performSearch();
+    }
+
+    function quickSearchEIN(ein) {
+      document.getElementById('searchInput').value = ein;
+      performSearch();
+    }
+
+    function quickSearchState(state) {
+      document.getElementById('searchInput').value = state;
+      performSearch();
+    }
+
+    function displayResults(results, query) {
+      const resultsDiv = document.getElementById('results');
+
+      if (!results.length) {
+        resultsDiv.innerHTML = `<div class="loading">No results found for "${query}"</div>`;
+        return;
+      }
+
+      resultsDiv.innerHTML = `
+        <h3 style="margin-bottom: 20px;">Found ${results.length} results for "${query}"</h3>
+        <div class="results">
+          ${results.map(plan => `
+            <div class="result-card">
+              <div class="company-name">${plan.company.name}</div>
+              <div class="plan-name">${plan.planName}</div>
+              <div class="details">
+                <div class="detail-item">
+                  <span class="detail-label">EIN</span>
+                  <span class="detail-value">${plan.ein}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Location</span>
+                  <span class="detail-value">${plan.company.city}, ${plan.company.state}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Participants</span>
+                  <span class="detail-value">${plan.planDetails.participants.toLocaleString()}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Plan Type</span>
+                  <span class="detail-value">${plan.planDetails.type}</span>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // Allow Enter key to search
+    document.getElementById('searchInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        performSearch();
+      }
+    });
+
+    // Auto-search on page load with Oracle as example
+    window.addEventListener('load', () => {
+      quickSearch('oracle');
+    });
+  </script>
+</body>
+</html>

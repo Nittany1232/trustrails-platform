@@ -16,6 +16,25 @@ npm run build
 npm run test
 ```
 
+### ⚠️ Widget Authentication Service
+
+**Current Location**: The widget authentication endpoints are currently part of the main TrustRails app at `/home/stock1232/projects/trustrails/`
+- Auth endpoint: `/app/api/widget/auth/route.ts`
+- Account creation: `/app/api/widget/create-account/route.ts`
+
+**To test widget with authentication:**
+```bash
+# Terminal 1: Run widget demo
+cd /home/stock1232/projects/trustrails-platform/apps/widget-demo
+npm run dev  # Runs on port 3001
+
+# Terminal 2: Run TrustRails app (provides auth service)
+cd /home/stock1232/projects/trustrails
+PORT=3002 npm run dev  # Must run on port 3002 for widget to find auth endpoints
+```
+
+**Future Architecture**: Widget auth should be extracted as a separate microservice in `services/widget-auth-service/` for better separation of concerns, scalability, and security isolation. See architecture recommendations below.
+
 ## 📦 Monorepo Structure
 
 ```
