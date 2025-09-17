@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Widget with Auth Service</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      background: white;
+      padding: 30px;
+      border-radius: 16px;
+      margin-bottom: 30px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+    .status.active {
+      background: #10b981;
+      color: white;
+    }
+    .status.inactive {
+      background: #ef4444;
+      color: white;
+    }
+    .widget-section {
+      background: white;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    }
+    .config {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 14px;
+    }
+    .config-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .config-label {
+      font-weight: 600;
+      color: #6c757d;
+    }
+    .config-value {
+      color: #212529;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Widget Auth Service Test <span id="status" class="status">Loading...</span></h1>
+      <p>Testing the new microservice-based authentication at localhost:3003</p>
+    </div>
+
+    <div class="widget-section">
+      <h2>Configuration</h2>
+      <div class="config">
+        <div class="config-item">
+          <span class="config-label">Auth Service:</span>
+          <span class="config-value">http://localhost:3003</span>
+        </div>
+        <div class="config-item">
+          <span class="config-label">Partner ID:</span>
+          <span class="config-value">ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8</span>
+        </div>
+        <div class="config-item">
+          <span class="config-label">API Key:</span>
+          <span class="config-value">tr_test_pk_fTeq75r...R4R (Empower Test Key)</span>
+        </div>
+        <div class="config-item">
+          <span class="config-label">Search API:</span>
+          <span class="config-value">https://searchplans-pixdjghfcq-uc.a.run.app</span>
+        </div>
+      </div>
+
+      <h2>Widget</h2>
+      <trustrails-widget
+        id="test-widget"
+        partner-id="ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8"
+        api-key="tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R"
+        environment="sandbox"
+        auth-endpoint="http://localhost:3003/api/widget/auth"
+        api-endpoint="https://searchplans-pixdjghfcq-uc.a.run.app">
+      </trustrails-widget>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import the widget
+    import '@trustrails/rollover-widget';
+
+    // Test auth service health
+    async function checkAuthService() {
+      const statusEl = document.getElementById('status');
+      try {
+        const response = await fetch('http://localhost:3003/health');
+        const data = await response.json();
+
+        if (data.status === 'healthy') {
+          statusEl.textContent = 'Auth Service Active';
+          statusEl.className = 'status active';
+        } else {
+          statusEl.textContent = 'Auth Service Unhealthy';
+          statusEl.className = 'status inactive';
+        }
+      } catch (error) {
+        statusEl.textContent = 'Auth Service Offline';
+        statusEl.className = 'status inactive';
+        console.error('Failed to check auth service:', error);
+      }
+    }
+
+    // Check service on load
+    checkAuthService();
+
+    // Listen for widget events
+    document.addEventListener('trustrails-auth-success', (event) => {
+      console.log('Authentication successful:', event.detail);
+    });
+
+    document.addEventListener('trustrails-auth-error', (event) => {
+      console.error('Authentication failed:', event.detail);
+    });
+
+    document.addEventListener('trustrails-search', (event) => {
+      console.log('Search performed:', event.detail);
+    });
+  </script>
+</body>
+</html>

@@ -83,6 +83,7 @@ export class TrustRailsWidget extends LitElement {
   @property({ type: String, attribute: 'user-id' }) userId = ''; // Optional, if partner has it
   @property({ type: String }) environment: 'sandbox' | 'production' = 'sandbox';
   @property({ type: String, attribute: 'api-endpoint' }) apiEndpoint = ''; // Optional custom API endpoint
+  @property({ type: String, attribute: 'auth-endpoint' }) authEndpoint = ''; // Optional custom auth endpoint
   @property({ type: Object }) theme = {
     primaryColor: '#1a73e8',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -100,6 +101,10 @@ export class TrustRailsWidget extends LitElement {
   @state() private isUserSessionReady = false;
   @state() private isDisabled = false;
   @state() private disabledReason: DisabledReason | null = null;
+  @state() private searchQuery = '';
+  @state() private searchResults: any[] = [];
+  @state() private isSearching = false;
+  @state() private hasSearched = false;
 
   // Development mode flag - only log sensitive data in development
   private get isDevelopment(): boolean {
@@ -361,6 +366,154 @@ export class TrustRailsWidget extends LitElement {
     .disabled-message .contact-link::after {
       content: '→';
       font-size: 12px;
+    }
+
+    .search-container {
+      padding: 24px 0;
+    }
+
+    .search-header {
+      margin-bottom: 24px;
+    }
+
+    .search-header h2 {
+      margin: 0 0 8px 0;
+      font-size: 24px;
+      color: var(--trustrails-heading-color, #1a1a1a);
+    }
+
+    .search-header p {
+      margin: 0;
+      color: #6b7280;
+      line-height: 1.5;
+    }
+
+    .search-form {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 12px 16px;
+      font-size: 16px;
+      border: 1px solid var(--trustrails-border-color, #e0e0e0);
+      border-radius: var(--trustrails-button-radius, 6px);
+      transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--trustrails-primary-color, #1a73e8);
+    }
+
+    .search-button {
+      padding: 12px 32px;
+      background: var(--trustrails-primary-color, #1a73e8);
+      color: white;
+      border: none;
+      border-radius: var(--trustrails-button-radius, 6px);
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .search-button:hover:not(:disabled) {
+      background: var(--trustrails-primary-hover, #1557b0);
+    }
+
+    .search-button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .search-results {
+      border-top: 1px solid var(--trustrails-border-color, #e0e0e0);
+      padding-top: 24px;
+    }
+
+    .search-results h3 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+      color: var(--trustrails-heading-color, #1a1a1a);
+    }
+
+    .result-item {
+      padding: 16px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .result-item:hover {
+      background: #f3f4f6;
+      border-color: var(--trustrails-primary-color, #1a73e8);
+    }
+
+    .result-item.selected {
+      background: #eff6ff;
+      border-color: var(--trustrails-primary-color, #1a73e8);
+      border-width: 2px;
+    }
+
+    .result-item h4 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--trustrails-heading-color, #1a1a1a);
+    }
+
+    .result-item .details {
+      display: flex;
+      gap: 16px;
+      font-size: 14px;
+      color: #6b7280;
+    }
+
+    .result-item .detail-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 48px 24px;
+      background: #f9fafb;
+      border-radius: 6px;
+      color: #6b7280;
+    }
+
+    .no-results h3 {
+      margin: 0 0 8px 0;
+      font-size: 18px;
+      color: #374151;
+    }
+
+    .searching-indicator {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 32px;
+      color: #6b7280;
+    }
+
+    .small-spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--trustrails-border-color, #e0e0e0);
+      border-top-color: var(--trustrails-primary-color, #1a73e8);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
     }
   `;
 
@@ -627,11 +780,14 @@ export class TrustRailsWidget extends LitElement {
   }
 
   private async authenticate() {
-    const apiUrl = this.apiEndpoint
-      ? `${this.apiEndpoint}/api/widget/auth`
-      : this.environment === 'production'
-        ? 'https://api.trustrails.com/api/widget/auth'
-        : 'http://localhost:3002/api/widget/auth';
+    // Use authEndpoint if provided, otherwise fall back to apiEndpoint or defaults
+    const apiUrl = this.authEndpoint
+      ? this.authEndpoint
+      : this.apiEndpoint
+        ? `${this.apiEndpoint}/api/widget/auth`
+        : this.environment === 'production'
+          ? 'https://api.trustrails.com/api/widget/auth'
+          : 'http://localhost:3002/api/widget/auth';
 
     if (this.isDevelopment) {
       console.log('Authenticating with:', apiUrl);
@@ -825,19 +981,98 @@ export class TrustRailsWidget extends LitElement {
     return result;
   }
 
-  private handleStartRollover() {
-    this.currentStep = 1;
-    // Dispatch custom event that parent can listen to
-    this.dispatchEvent(new CustomEvent('trustrails-start', {
+
+  private async handleSearch(e: Event) {
+    e.preventDefault();
+
+    if (!this.searchQuery.trim() || this.isSearching) {
+      return;
+    }
+
+    this.isSearching = true;
+    this.error = null;
+    this.hasSearched = true;
+
+    try {
+      // Use the apiEndpoint directly if provided (it should be the search API URL)
+      // The test.html already passes the full search API URL
+      const searchUrl = this.apiEndpoint || 'https://searchplans-pixdjghfcq-uc.a.run.app';
+
+      if (this.isDevelopment) {
+        console.log('Searching for:', this.searchQuery);
+        console.log('Using search endpoint:', searchUrl);
+      }
+
+      // Build URL with query parameters for GET request
+      const url = new URL(searchUrl);
+      url.searchParams.append('q', this.searchQuery);
+      url.searchParams.append('limit', '10');
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.bearerToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Search failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Handle the nested structure from the search API
+      this.searchResults = data.results || [];
+
+      if (this.isDevelopment) {
+        console.log('Search response:', data);
+        console.log('Search results:', this.searchResults.length, 'plans found');
+      }
+
+      // Dispatch search event
+      this.dispatchEvent(new CustomEvent('trustrails-search', {
+        detail: {
+          query: this.searchQuery,
+          results: this.searchResults,
+          count: this.searchResults.length
+        },
+        bubbles: true,
+        composed: true
+      }));
+
+    } catch (error) {
+      console.error('Search failed:', error);
+      this.error = error instanceof Error ? error.message : 'Search failed';
+      this.searchResults = [];
+    } finally {
+      this.isSearching = false;
+    }
+  }
+
+  private handleSearchInput(e: Event) {
+    const input = e.target as HTMLInputElement;
+    this.searchQuery = input.value;
+  }
+
+  private handleSelectPlan(plan: any) {
+    if (this.isDevelopment) {
+      console.log('Plan selected:', plan);
+    }
+
+    // Dispatch plan selection event with both old and new structure support
+    this.dispatchEvent(new CustomEvent('trustrails-plan-selected', {
       detail: {
-        partnerId: this.partnerId,
-        sessionId: this.sessionId,
-        userId: this.userSession?.user_id || null,
-        userEmail: this.userSession?.email || null
+        plan: plan,
+        planName: plan.planName || plan.PLAN_NAME,
+        sponsorName: plan.company?.name || plan.SPONSOR_NAME,
+        ein: plan.ein || plan.SPONS_EIN
       },
       bubbles: true,
       composed: true
     }));
+
+    // Move to next step
+    this.currentStep = 2;
   }
 
   // Public getter methods for partner integration
@@ -1188,23 +1423,100 @@ export class TrustRailsWidget extends LitElement {
           ` : ''}
 
           ${this.currentStep === 0 ? html`
+            <div class="search-container">
+              <div class="search-header">
+                <h2>Find Your 401(k) Plan</h2>
+                <p>Search for your employer or plan name to get started with your rollover</p>
+              </div>
+
+              <form class="search-form" @submit=${this.handleSearch}>
+                <input
+                  type="text"
+                  class="search-input"
+                  placeholder="Enter employer or plan name..."
+                  .value=${this.searchQuery}
+                  @input=${this.handleSearchInput}
+                  ?disabled=${this.isSearching}
+                />
+                <button
+                  type="submit"
+                  class="search-button"
+                  ?disabled=${!this.searchQuery.trim() || this.isSearching}
+                >
+                  ${this.isSearching ? html`
+                    <div class="small-spinner"></div>
+                    Searching...
+                  ` : 'Search'}
+                </button>
+              </form>
+
+              ${this.isSearching ? html`
+                <div class="searching-indicator">
+                  <div class="small-spinner"></div>
+                  <span>Searching Department of Labor database...</span>
+                </div>
+              ` : this.hasSearched ? html`
+                <div class="search-results">
+                  ${this.searchResults.length > 0 ? html`
+                    <h3>Found ${this.searchResults.length} matching plan${this.searchResults.length === 1 ? '' : 's'}</h3>
+                    ${this.searchResults.map(result => html`
+                      <div class="result-item" @click=${() => this.handleSelectPlan(result)}>
+                        <h4>${result.planName || result.PLAN_NAME || 'Unnamed Plan'}</h4>
+                        <div class="details">
+                          <div class="detail-item">
+                            <span>🏢</span>
+                            <span>${result.company?.name || result.SPONSOR_NAME || 'Unknown Sponsor'}</span>
+                          </div>
+                          ${(result.company?.city || result.SPONS_CITY) ? html`
+                            <div class="detail-item">
+                              <span>📍</span>
+                              <span>${result.company?.city || result.SPONS_CITY}, ${result.company?.state || result.SPONS_STATE || ''}</span>
+                            </div>
+                          ` : ''}
+                          ${result.planDetails?.participants || result.TOT_PARTCP_CNT ? html`
+                            <div class="detail-item">
+                              <span>👥</span>
+                              <span>${result.planDetails?.participants || result.TOT_PARTCP_CNT} participants</span>
+                            </div>
+                          ` : ''}
+                        </div>
+                      </div>
+                    `)}
+                  ` : html`
+                    <div class="no-results">
+                      <h3>No plans found</h3>
+                      <p>Try searching with a different employer or plan name</p>
+                    </div>
+                  `}
+                </div>
+              ` : ''}
+            </div>
+          ` : this.currentStep === 1 ? html`
             <div class="welcome">
-              <h2>Start Your 401(k) Rollover</h2>
-              <p>
-                Move your retirement savings to a better plan in minutes.
-                We'll guide you through every step of the process.
-              </p>
+              <h2>Account Information</h2>
+              <p>Please provide your account details to continue with the rollover process.</p>
               <button
                 class="button"
-                @click=${this.handleStartRollover}
-                ?disabled=${this.userEmail && !this.isUserSessionReady}
+                @click=${() => this.currentStep = 2}
               >
-                ${this.userEmail && !this.isUserSessionReady ? 'Setting up session...' : 'Get Started'}
+                Continue
+              </button>
+            </div>
+          ` : this.currentStep === 2 ? html`
+            <div class="welcome">
+              <h2>Verify Your Plan</h2>
+              <p>Please verify the plan information is correct.</p>
+              <button
+                class="button"
+                @click=${() => this.currentStep = 3}
+              >
+                Verify
               </button>
             </div>
           ` : html`
-            <div>
-              Step ${this.currentStep} content will go here...
+            <div class="welcome">
+              <h2>Rollover Complete</h2>
+              <p>Your rollover request has been submitted successfully.</p>
             </div>
           `}
         ` : html`
