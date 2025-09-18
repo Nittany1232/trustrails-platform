@@ -42,12 +42,14 @@ export const searchPlans: HttpFunction = async (req, res) => {
       city,     // City name
       type,     // Plan type (401k, 403b, etc)
       limit = '20',
-      offset = '0'
+      offset = '0',
+      force_bigquery = 'false'  // Force BigQuery instead of Firestore cache
     } = req.query as Record<string, string>;
 
     // Validate inputs
     const searchLimit = Math.min(parseInt(limit) || 20, 100);
     const searchOffset = parseInt(offset) || 0;
+    const forceBigQuery = force_bigquery === 'true';
 
     // Check if we need any search criteria
     if (!q && !ein && !state && !city) {
@@ -57,7 +59,7 @@ export const searchPlans: HttpFunction = async (req, res) => {
     }
 
     // Create cache key
-    const cacheKey = JSON.stringify({ q, ein, state, city, type, limit, offset });
+    const cacheKey = JSON.stringify({ q, ein, state, city, type, limit, offset, force_bigquery });
 
     // Check memory cache first
     const cached = searchCache.get(cacheKey);
@@ -70,18 +72,27 @@ export const searchPlans: HttpFunction = async (req, res) => {
     let totalCount = 0;
     let searchMethod = '';
 
-    // Try Firestore first for common searches (fastest)
-    if ((q || ein) && searchLimit <= 20) {
-      searchMethod = 'firestore';
-      results = await searchFirestore({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
-    }
-
-    // Fall back to BigQuery for complex or large queries
-    if (results.length === 0) {
+    // Choose search method based on force_bigquery flag
+    if (forceBigQuery) {
+      // Force BigQuery for custodian searches and comprehensive results
       searchMethod = 'bigquery';
       const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
       results = bigQueryResults.results;
       totalCount = bigQueryResults.totalCount;
+    } else {
+      // Try Firestore first for common searches (fastest)
+      if ((q || ein) && searchLimit <= 20) {
+        searchMethod = 'firestore';
+        results = await searchFirestore({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
+      }
+
+      // Fall back to BigQuery for complex or large queries
+      if (results.length === 0) {
+        searchMethod = 'bigquery';
+        const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
+        results = bigQueryResults.results;
+        totalCount = bigQueryResults.totalCount;
+      }
     }
 
     // Format response

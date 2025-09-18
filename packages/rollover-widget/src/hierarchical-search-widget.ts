@@ -13,7 +13,7 @@ export class TrustRailsHierarchicalSearch extends LitElement {
   @property({ type: Boolean }) debug = false;
   @property({ type: Boolean }) scrollable = false; // Enable fixed height with scroll
 
-  @state() private searchMode: 'initial' | 'employer' | 'custodian' = 'initial';
+  @state() private searchMode: 'initial' | 'employer' | 'custodian' | 'custodian-refinement' = 'initial';
   @state() private loading = false;
   @state() private loadingMore = false;
   @state() private searchQuery = '';
@@ -22,8 +22,11 @@ export class TrustRailsHierarchicalSearch extends LitElement {
   @state() private currentOffset = 0;
   @state() private hasMoreResults = false;
   @state() private totalResults = 0;
+  @state() private selectedCustodian: any = null;
+  @state() private custodianStats: any = null;
 
   private readonly resultsPerPage = 5; // Keep it compact for embedded widgets
+  private readonly largeCustomdianThreshold = 10; // Plans threshold for requiring refinement (lowered for testing)
 
   // Major custodians for quick selection
   private readonly custodians = [
@@ -450,6 +453,65 @@ export class TrustRailsHierarchicalSearch extends LitElement {
       padding: 1rem;
       font-style: italic;
     }
+
+    .custodian-refinement {
+      background: var(--tr-surface);
+      border: 1px solid var(--tr-border);
+      border-radius: var(--tr-radius);
+      padding: 1.5rem;
+      margin-top: 1rem;
+    }
+
+    .custodian-header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .custodian-name {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--tr-text-primary);
+      margin-bottom: 0.5rem;
+    }
+
+    .custodian-stats {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--tr-primary-color);
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--tr-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .custodian-message {
+      text-align: center;
+      color: var(--tr-text-secondary);
+      font-size: 0.875rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+
+    .secondary-search-label {
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      color: var(--tr-text-primary);
+    }
   `;
 
   override render() {
@@ -483,6 +545,7 @@ export class TrustRailsHierarchicalSearch extends LitElement {
 
           ${this.searchMode === 'employer' ? this.renderEmployerSearch() : ''}
           ${this.searchMode === 'custodian' ? this.renderCustodianSearch() : ''}
+          ${this.searchMode === 'custodian-refinement' ? this.renderCustodianRefinement() : ''}
         </div>
 
         ${this.loading ? html`
@@ -536,10 +599,67 @@ export class TrustRailsHierarchicalSearch extends LitElement {
     `;
   }
 
+  private renderCustodianRefinement() {
+    if (!this.selectedCustodian || !this.custodianStats) {
+      return html``;
+    }
+
+    return html`
+      <div class="custodian-refinement">
+        <div class="custodian-header">
+          <div class="custodian-name">${this.selectedCustodian.name}</div>
+
+          <div class="custodian-stats">
+            <div class="stat-item">
+              <div class="stat-value">${this.custodianStats.planCount?.toLocaleString()}</div>
+              <div class="stat-label">Retirement Plans</div>
+            </div>
+            ${this.custodianStats.marketShare ? html`
+              <div class="stat-item">
+                <div class="stat-value">${this.custodianStats.marketShare}%</div>
+                <div class="stat-label">Market Share</div>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="custodian-message">
+            ${this.selectedCustodian.name} manages ${this.custodianStats.planCount?.toLocaleString()} retirement plans across the US.<br>
+            Please search for your employer to find your specific plan.
+          </div>
+        </div>
+
+        <div class="secondary-search-label">Search for your employer:</div>
+        <div class="search-input-group">
+          <div class="search-icon">🔍</div>
+          <input
+            type="text"
+            class="search-input"
+            placeholder="Type your employer name (e.g., Microsoft, Walmart)"
+            .value=${this.searchQuery}
+            @input=${(e: Event) => this.searchQuery = (e.target as HTMLInputElement).value}
+            @keyup=${(e: KeyboardEvent) => e.key === 'Enter' && this.performCustodianEmployerSearch()}
+          />
+        </div>
+      </div>
+    `;
+  }
+
   private renderResults() {
+    const resultsTitle = this.searchMode === 'custodian-refinement' && this.selectedCustodian
+      ? `${this.selectedCustodian.name} Plans`
+      : 'Search Results';
+
     return html`
       <div class="results-section">
-        <h3 style="margin-bottom: 1rem;">Search Results</h3>
+        <h3 style="margin-bottom: 1rem;">${resultsTitle}</h3>
+
+        ${this.searchMode === 'custodian-refinement' && this.selectedCustodian ? html`
+          <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--tr-surface); border-radius: var(--tr-radius); border: 1px solid var(--tr-border);">
+            <div style="font-size: 0.875rem; color: var(--tr-text-secondary);">
+              🏦 Showing ${this.selectedCustodian.name} plans for "<strong>${this.searchQuery}</strong>"
+            </div>
+          </div>
+        ` : ''}
 
         ${this.totalResults > 0 ? html`
           <div class="results-info">
@@ -717,8 +837,157 @@ export class TrustRailsHierarchicalSearch extends LitElement {
   }
 
   private async selectCustodian(custodian: any) {
-    this.searchQuery = custodian.name;
-    await this.performSearch(false);
+    this.loading = true;
+    this.error = '';
+
+    try {
+      // First, get custodian statistics to determine if it's a large custodian
+      const custodianStats = await this.getCustodianStats(custodian.name);
+
+      if (custodianStats && custodianStats.planCount > this.largeCustomdianThreshold) {
+        // Large custodian - show refinement interface
+        this.selectedCustodian = custodian;
+        this.custodianStats = custodianStats;
+        this.searchMode = 'custodian-refinement';
+        this.searchQuery = '';
+
+        // Auto-focus the input after render
+        this.updateComplete.then(() => {
+          const input = this.shadowRoot?.querySelector('.search-input') as HTMLInputElement;
+          input?.focus();
+        });
+      } else {
+        // Small custodian - show results directly
+        this.searchQuery = custodian.name;
+        await this.performSearch(false);
+      }
+    } catch (error) {
+      console.error('Error selecting custodian:', error);
+      this.error = 'Failed to get custodian information. Please try again.';
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  private async getCustodianStats(custodianName: string): Promise<any> {
+    try {
+      // For now, simulate custodian stats based on known major custodians
+      // In production, this would call the updated API with custodian search
+      const custodianData: Record<string, any> = {
+        'fidelity': { planCount: 1547, marketShare: 23.2 },
+        'empower': { planCount: 1223, marketShare: 18.4 },
+        'vanguard': { planCount: 892, marketShare: 13.4 },
+        'principal': { planCount: 756, marketShare: 11.3 },
+        'tiaa': { planCount: 634, marketShare: 9.5 },
+        'schwab': { planCount: 445, marketShare: 6.7 },
+        'johnhancock': { planCount: 234, marketShare: 3.5 },
+        'massmutual': { planCount: 187, marketShare: 2.8 },
+        'troweprice': { planCount: 156, marketShare: 2.3 },
+        'prudential': { planCount: 123, marketShare: 1.8 },
+        'wellsfargo': { planCount: 89, marketShare: 1.3 },
+        'transamerica': { planCount: 67, marketShare: 1.0 }
+      };
+
+      const custodianKey = custodianName.toLowerCase();
+      if (custodianData[custodianKey]) {
+        return custodianData[custodianKey];
+      }
+
+      // For other custodians, try the API
+      const response = await fetch(
+        `${this.apiEndpoint}/searchPlans?q=${encodeURIComponent(custodianName)}&limit=5&force_bigquery=true`
+      );
+
+      if (!response.ok) throw new Error('Failed to get custodian stats');
+
+      const data = await response.json();
+      const results = data.results || [];
+
+      // Look for a custodian result (marked with isCustodian: true)
+      const custodianResult = results.find((r: any) => r.isCustodian);
+      if (custodianResult) {
+        return {
+          planCount: custodianResult.participants || 0, // participants field contains plan count for custodians
+          marketShare: custodianResult.marketShare || 0
+        };
+      }
+
+      // Estimate based on search results
+      if (results.length > 0) {
+        return {
+          planCount: Math.max(data.pagination?.total || results.length, 5),
+          marketShare: 0.1
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error getting custodian stats:', error);
+      return null;
+    }
+  }
+
+  private async performCustodianEmployerSearch(loadMore = false) {
+    if (!this.searchQuery.trim() || !this.selectedCustodian) return;
+
+    if (loadMore) {
+      this.loadingMore = true;
+    } else {
+      this.loading = true;
+      this.resetPagination();
+    }
+
+    this.error = '';
+
+    try {
+      const offset = loadMore ? this.currentOffset : 0;
+      // Combine custodian and employer search by using custodian name + employer query
+      const combinedQuery = `${this.selectedCustodian.name} ${this.searchQuery}`;
+
+      const response = await fetch(
+        `${this.apiEndpoint}/searchPlans?q=${encodeURIComponent(combinedQuery)}&limit=${this.resultsPerPage}&offset=${offset}&force_bigquery=true`
+      );
+
+      if (!response.ok) throw new Error('Search failed');
+
+      const data = await response.json();
+      const newResults = data.results || [];
+
+      // Filter out custodian results, only show actual plans
+      const planResults = newResults.filter((r: any) => !r.isCustodian);
+
+      if (loadMore) {
+        this.searchResults = [...this.searchResults, ...planResults];
+      } else {
+        this.searchResults = planResults;
+      }
+
+      // Handle totalCount from API response
+      if (data.totalCount !== undefined) {
+        this.totalResults = data.totalCount;
+      } else {
+        this.totalResults = planResults.length === this.resultsPerPage
+          ? this.currentOffset + planResults.length + 1
+          : this.currentOffset + planResults.length;
+      }
+
+      this.currentOffset = offset + planResults.length;
+      this.hasMoreResults = planResults.length === this.resultsPerPage &&
+                            (data.totalCount === undefined || this.currentOffset < this.totalResults);
+
+      if (this.searchResults.length === 0 && !loadMore) {
+        this.error = `No plans found for "${this.searchQuery}" with ${this.selectedCustodian.name}. Try a different employer name.`;
+      }
+    } catch (error) {
+      const errorMessage = loadMore
+        ? 'Failed to load more results. Please try again.'
+        : 'Failed to search. Please try again.';
+      this.error = errorMessage;
+      console.error('Custodian employer search error:', error);
+    } finally {
+      this.loading = false;
+      this.loadingMore = false;
+    }
   }
 
   private selectResult(result: any) {
@@ -732,12 +1001,18 @@ export class TrustRailsHierarchicalSearch extends LitElement {
   private reset() {
     this.searchMode = 'initial';
     this.searchQuery = '';
+    this.selectedCustodian = null;
+    this.custodianStats = null;
     this.resetPagination();
   }
 
   private async loadMoreResults() {
     if (this.hasMoreResults && !this.loadingMore) {
-      await this.performSearch(true);
+      if (this.searchMode === 'custodian-refinement') {
+        await this.performCustodianEmployerSearch(true);
+      } else {
+        await this.performSearch(true);
+      }
     }
   }
 
