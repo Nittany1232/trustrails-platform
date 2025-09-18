@@ -6,9 +6,11 @@
  */
 
 export { TrustRailsWidget } from './trustrails-widget';
+export { TrustRailsHierarchicalSearch } from './hierarchical-search-widget';
 
-// Auto-register the web component when this module is imported
+// Auto-register the web components when this module is imported
 import './trustrails-widget';
+import './hierarchical-search-widget';
 
 // Export types for TypeScript consumers
 export interface TrustRailsWidgetConfig {

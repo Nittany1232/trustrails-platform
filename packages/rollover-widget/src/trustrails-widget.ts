@@ -74,6 +74,22 @@ const WIDGET_DISABLED_MESSAGES = {
 } as const;
 
 type DisabledReason = keyof typeof WIDGET_DISABLED_MESSAGES;
+
+// Major recordkeepers data (based on market share and competitor analysis)
+const MAJOR_RECORDKEEPERS = [
+  { id: 'fidelity', name: 'Fidelity', logo: 'F', marketShare: 23.4 },
+  { id: 'empower', name: 'Empower', logo: 'E', marketShare: 14.1 },
+  { id: 'principal', name: 'Principal', logo: 'P', marketShare: 12.8 },
+  { id: 'vanguard', name: 'Vanguard', logo: 'V', marketShare: 11.2 },
+  { id: 'john-hancock', name: 'John Hancock', logo: 'JH', marketShare: 8.7 },
+  { id: 'massmutual', name: 'MassMutual', logo: 'MM', marketShare: 7.3 },
+  { id: 'prudential', name: 'Prudential', logo: 'PR', marketShare: 6.9 },
+  { id: 'troweprice', name: 'T. Rowe Price', logo: 'TR', marketShare: 5.2 },
+  { id: 'tiaa', name: 'TIAA', logo: 'TI', marketShare: 4.8 },
+  { id: 'wellsfargo', name: 'Wells Fargo', logo: 'WF', marketShare: 3.1 },
+  { id: 'transamerica', name: 'Transamerica', logo: 'TA', marketShare: 2.5 },
+  { id: 'other', name: 'Other / Don\'t See Mine', logo: '?', marketShare: 0 }
+] as const;
 @customElement('trustrails-widget')
 export class TrustRailsWidget extends LitElement {
   // Public properties that partners can configure
@@ -94,7 +110,6 @@ export class TrustRailsWidget extends LitElement {
   @state() private isLoading = false;
   @state() private isAuthenticated = false;
   @state() private error: string | null = null;
-  @state() private currentStep = 0;
   @state() private bearerToken: string | null = null;
   @state() private sessionId: string | null = null;
   @state() private userSession: any = null;
@@ -105,6 +120,8 @@ export class TrustRailsWidget extends LitElement {
   @state() private searchResults: any[] = [];
   @state() private isSearching = false;
   @state() private hasSearched = false;
+  @state() private currentFlow: 'start' | 'recordkeeper' | 'employer' = 'start';
+  @state() private selectedRecordkeeper: string | null = null;
 
   // Development mode flag - only log sensitive data in development
   private get isDevelopment(): boolean {
@@ -120,60 +137,114 @@ export class TrustRailsWidget extends LitElement {
     :host {
       display: block;
       font-family: var(--trustrails-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-      color: var(--trustrails-text-color, #333);
-      background: var(--trustrails-background, #fff);
-      border: 1px solid var(--trustrails-border-color, #e0e0e0);
-      border-radius: var(--trustrails-border-radius, 8px);
-      padding: 24px;
-      max-width: 600px;
+      color: var(--trustrails-text-color, #1f2937);
+      background: var(--trustrails-background, #ffffff);
+      border: 1px solid var(--trustrails-border-color, #e5e7eb);
+      border-radius: var(--trustrails-border-radius, 12px);
+      padding: var(--trustrails-padding, 0);
+      max-width: var(--trustrails-max-width, 600px);
+      min-height: var(--trustrails-min-height, 400px);
       box-sizing: border-box;
+      overflow: hidden;
+      box-shadow: var(--trustrails-shadow, 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06));
     }
 
+    /* Header Styles */
     .header {
       display: flex;
       align-items: center;
-      margin-bottom: 24px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--trustrails-border-color, #e0e0e0);
+      justify-content: space-between;
+      padding: var(--trustrails-header-padding, 20px 24px);
+      background: var(--trustrails-header-bg, linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%));
+      border-bottom: 1px solid var(--trustrails-border-color, #e5e7eb);
     }
 
     .logo {
-      width: 32px;
-      height: 32px;
+      width: var(--trustrails-logo-size, 36px);
+      height: var(--trustrails-logo-size, 36px);
       margin-right: 12px;
-      background: var(--trustrails-primary-color, #1a73e8);
-      border-radius: 4px;
+      background: var(--trustrails-primary-color, #3b82f6);
+      border-radius: var(--trustrails-logo-radius, 8px);
       display: flex;
       align-items: center;
       justify-content: center;
       color: white;
-      font-weight: bold;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .header-content {
+      display: flex;
+      align-items: center;
+      flex: 1;
     }
 
     .title {
-      font-size: 20px;
+      font-size: var(--trustrails-title-size, 18px);
       font-weight: 600;
-      color: var(--trustrails-heading-color, #1a1a1a);
+      color: var(--trustrails-heading-color, #1f2937);
+      margin: 0;
     }
 
+    .subtitle {
+      font-size: 14px;
+      color: var(--trustrails-muted-color, #6b7280);
+      margin: 2px 0 0 0;
+    }
+
+    .progress-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--trustrails-muted-color, #6b7280);
+      font-size: 12px;
+    }
+
+    .progress-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .progress-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--trustrails-border-color, #e5e7eb);
+      transition: background 0.2s;
+    }
+
+    .progress-dot.active {
+      background: var(--trustrails-primary-color, #3b82f6);
+    }
+
+    /* Content Container */
     .content {
-      min-height: 200px;
+      padding: var(--trustrails-content-padding, 24px);
+      min-height: 300px;
     }
 
+    /* Loading and Error States */
     .loading {
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
       min-height: 200px;
+      gap: 16px;
     }
 
     .spinner {
       width: 40px;
       height: 40px;
-      border: 3px solid var(--trustrails-border-color, #e0e0e0);
-      border-top-color: var(--trustrails-primary-color, #1a73e8);
+      border: 3px solid var(--trustrails-border-color, #e5e7eb);
+      border-top-color: var(--trustrails-primary-color, #3b82f6);
       border-radius: 50%;
       animation: spin 1s linear infinite;
+    }
+
+    .loading-text {
+      color: var(--trustrails-muted-color, #6b7280);
+      font-size: 14px;
     }
 
     @keyframes spin {
@@ -181,139 +252,492 @@ export class TrustRailsWidget extends LitElement {
     }
 
     .error {
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      border-radius: 6px;
-      padding: 12px;
-      color: #991b1b;
+      background: var(--trustrails-error-bg, #fef2f2);
+      border: 1px solid var(--trustrails-error-border, #fecaca);
+      border-radius: var(--trustrails-border-radius, 8px);
+      padding: 16px;
+      color: var(--trustrails-error-text, #991b1b);
       margin-bottom: 16px;
+      font-size: 14px;
     }
 
+    /* Button Styles */
     .button {
-      background: var(--trustrails-primary-color, #1a73e8);
+      background: var(--trustrails-primary-color, #3b82f6);
       color: white;
       border: none;
-      border-radius: var(--trustrails-button-radius, 6px);
-      padding: 12px 24px;
-      font-size: 16px;
+      border-radius: var(--trustrails-button-radius, 8px);
+      padding: var(--trustrails-button-padding, 12px 24px);
+      font-size: var(--trustrails-button-font-size, 14px);
       font-weight: 500;
       cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .button:hover {
-      background: var(--trustrails-primary-hover, #1557b0);
-    }
-
-    .button:disabled {
-      background: #9ca3af;
-      cursor: not-allowed;
-    }
-
-    .steps {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 32px;
-    }
-
-    .step {
-      flex: 1;
-      text-align: center;
-      position: relative;
-    }
-
-    .step:not(:last-child)::after {
-      content: '';
-      position: absolute;
-      top: 20px;
-      left: 50%;
-      width: 100%;
-      height: 2px;
-      background: var(--trustrails-border-color, #e0e0e0);
-    }
-
-    .step.active .step-number {
-      background: var(--trustrails-primary-color, #1a73e8);
-      color: white;
-    }
-
-    .step.completed .step-number {
-      background: #10b981;
-      color: white;
-    }
-
-    .step-number {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: var(--trustrails-border-color, #e0e0e0);
-      color: #6b7280;
+      transition: all 0.2s ease;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .button:hover:not(:disabled) {
+      background: var(--trustrails-primary-hover, #2563eb);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+    }
+
+    .button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .button:disabled {
+      background: var(--trustrails-disabled-bg, #9ca3af);
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .button.secondary {
+      background: var(--trustrails-secondary-bg, #f3f4f6);
+      color: var(--trustrails-secondary-text, #374151);
+      border: 1px solid var(--trustrails-border-color, #e5e7eb);
+    }
+
+    .button.secondary:hover:not(:disabled) {
+      background: var(--trustrails-secondary-hover, #e5e7eb);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .button.large {
+      padding: 16px 32px;
+      font-size: 16px;
       font-weight: 600;
-      position: relative;
-      z-index: 1;
     }
 
-    .step-label {
-      margin-top: 8px;
-      font-size: 14px;
-      color: #6b7280;
+    .button.small {
+      padding: 8px 16px;
+      font-size: 12px;
     }
 
-    .welcome {
+    /* Flow Selection Screen */
+    .flow-selection {
       text-align: center;
-      padding: 32px 0;
+      padding: 40px 0 20px;
     }
 
-    .welcome h2 {
-      margin: 0 0 16px 0;
-      font-size: 24px;
-      color: var(--trustrails-heading-color, #1a1a1a);
+    .flow-title {
+      font-size: var(--trustrails-title-size, 24px);
+      font-weight: 700;
+      color: var(--trustrails-heading-color, #1f2937);
+      margin: 0 0 8px 0;
+      line-height: 1.3;
     }
 
-    .welcome p {
-      margin: 0 0 24px 0;
-      color: #6b7280;
-      line-height: 1.6;
+    .flow-subtitle {
+      font-size: 16px;
+      color: var(--trustrails-muted-color, #6b7280);
+      margin: 0 0 32px 0;
+      line-height: 1.5;
     }
 
+    .flow-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 480px) {
+      .flow-options {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .flow-option {
+      background: var(--trustrails-card-bg, #ffffff);
+      border: 2px solid var(--trustrails-border-color, #e5e7eb);
+      border-radius: var(--trustrails-card-radius, 12px);
+      padding: 24px 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      min-height: 140px;
+      justify-content: center;
+    }
+
+    .flow-option:hover {
+      border-color: var(--trustrails-primary-color, #3b82f6);
+      background: var(--trustrails-primary-bg, #eff6ff);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
+    }
+
+    .flow-option-icon {
+      font-size: 32px;
+      margin-bottom: 4px;
+    }
+
+    .flow-option-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--trustrails-heading-color, #1f2937);
+      margin: 0;
+      text-align: center;
+    }
+
+    .flow-option-desc {
+      font-size: 13px;
+      color: var(--trustrails-muted-color, #6b7280);
+      margin: 0;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    /* Recordkeeper Flow */
+    .recordkeeper-flow {
+      padding: 20px 0;
+    }
+
+    .flow-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .flow-header h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--trustrails-heading-color, #1f2937);
+      margin: 0 0 8px 0;
+    }
+
+    .flow-header p {
+      font-size: 14px;
+      color: var(--trustrails-muted-color, #6b7280);
+      margin: 0;
+    }
+
+    .back-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--trustrails-primary-color, #3b82f6);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 20px;
+      padding: 4px 0;
+      transition: color 0.2s;
+    }
+
+    .back-button:hover {
+      color: var(--trustrails-primary-hover, #2563eb);
+    }
+
+    .recordkeeper-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 480px) {
+      .recordkeeper-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .recordkeeper-card {
+      background: var(--trustrails-card-bg, #ffffff);
+      border: 2px solid var(--trustrails-border-color, #e5e7eb);
+      border-radius: var(--trustrails-card-radius, 12px);
+      padding: 20px 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      min-height: 120px;
+      justify-content: center;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .recordkeeper-card:hover {
+      border-color: var(--trustrails-primary-color, #3b82f6);
+      background: var(--trustrails-primary-bg, #eff6ff);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+    }
+
+    .recordkeeper-card.selected {
+      border-color: var(--trustrails-primary-color, #3b82f6);
+      background: var(--trustrails-primary-bg, #eff6ff);
+      box-shadow: 0 0 0 1px var(--trustrails-primary-color, #3b82f6);
+    }
+
+    .recordkeeper-logo {
+      width: 48px;
+      height: 48px;
+      background: var(--trustrails-logo-bg, #f3f4f6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--trustrails-heading-color, #1f2937);
+    }
+
+    .recordkeeper-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--trustrails-heading-color, #1f2937);
+      text-align: center;
+      line-height: 1.3;
+      margin: 0;
+    }
+
+    /* Employer Search Flow */
+    .employer-search {
+      padding: 20px 0;
+    }
+
+    .search-container {
+      margin-bottom: 24px;
+    }
+
+    .search-form {
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 16px 20px 16px 48px;
+      font-size: 16px;
+      border: 2px solid var(--trustrails-border-color, #e5e7eb);
+      border-radius: var(--trustrails-input-radius, 12px);
+      background: var(--trustrails-input-bg, #ffffff);
+      color: var(--trustrails-text-color, #1f2937);
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--trustrails-primary-color, #3b82f6);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .search-input::placeholder {
+      color: var(--trustrails-placeholder-color, #9ca3af);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--trustrails-muted-color, #6b7280);
+      font-size: 16px;
+      pointer-events: none;
+    }
+
+    .search-suggestions {
+      background: var(--trustrails-card-bg, #ffffff);
+      border: 1px solid var(--trustrails-border-color, #e5e7eb);
+      border-radius: var(--trustrails-card-radius, 8px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      max-height: 300px;
+      overflow-y: auto;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      margin-top: 4px;
+    }
+
+    .suggestion-item {
+      padding: 12px 16px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--trustrails-border-color, #e5e7eb);
+      transition: background 0.1s ease;
+    }
+
+    .suggestion-item:last-child {
+      border-bottom: none;
+    }
+
+    .suggestion-item:hover {
+      background: var(--trustrails-hover-bg, #f9fafb);
+    }
+
+    .suggestion-item.focused {
+      background: var(--trustrails-primary-bg, #eff6ff);
+    }
+
+    .suggestion-name {
+      font-weight: 500;
+      color: var(--trustrails-heading-color, #1f2937);
+      font-size: 14px;
+    }
+
+    .suggestion-details {
+      font-size: 12px;
+      color: var(--trustrails-muted-color, #6b7280);
+      margin-top: 2px;
+    }
+
+    /* User Status */
     .user-status {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 12px;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
+      padding: 12px 16px;
+      background: var(--trustrails-info-bg, #f0f9ff);
+      border: 1px solid var(--trustrails-info-border, #e0f2fe);
+      border-radius: var(--trustrails-border-radius, 8px);
       margin-bottom: 16px;
       font-size: 14px;
     }
 
     .user-status.ready {
-      background: #f0f9f4;
-      border-color: #d1fae5;
-      color: #065f46;
+      background: var(--trustrails-success-bg, #f0fdf4);
+      border-color: var(--trustrails-success-border, #bbf7d0);
+      color: var(--trustrails-success-text, #065f46);
     }
 
     .user-status-indicator {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #9ca3af;
+      background: var(--trustrails-info-color, #0ea5e9);
+      flex-shrink: 0;
     }
 
     .user-status.ready .user-status-indicator {
-      background: #10b981;
+      background: var(--trustrails-success-color, #10b981);
     }
 
+    /* Results Display */
+    .search-results {
+      margin-top: 24px;
+    }
+
+    .results-header {
+      margin-bottom: 16px;
+    }
+
+    .results-count {
+      font-size: 14px;
+      color: var(--trustrails-muted-color, #6b7280);
+      margin-bottom: 8px;
+    }
+
+    .result-item {
+      background: var(--trustrails-card-bg, #ffffff);
+      border: 1px solid var(--trustrails-border-color, #e5e7eb);
+      border-radius: var(--trustrails-card-radius, 8px);
+      padding: 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .result-item:hover {
+      border-color: var(--trustrails-primary-color, #3b82f6);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+    }
+
+    .result-item.selected {
+      border-color: var(--trustrails-primary-color, #3b82f6);
+      background: var(--trustrails-primary-bg, #eff6ff);
+    }
+
+    .result-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--trustrails-heading-color, #1f2937);
+      margin: 0 0 8px 0;
+    }
+
+    .result-details {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 14px;
+      color: var(--trustrails-muted-color, #6b7280);
+      margin-bottom: 12px;
+    }
+
+    .result-detail {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .result-contact {
+      padding-top: 12px;
+      border-top: 1px solid var(--trustrails-border-color, #e5e7eb);
+      margin-top: 12px;
+    }
+
+    .contact-name {
+      font-weight: 600;
+      color: var(--trustrails-primary-color, #3b82f6);
+      font-size: 14px;
+    }
+
+    .contact-confidence {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 11px;
+      border-radius: 12px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .contact-confidence.high {
+      background: var(--trustrails-success-bg, #dcfce7);
+      color: var(--trustrails-success-text, #166534);
+    }
+
+    .contact-confidence.medium {
+      background: var(--trustrails-warning-bg, #fef3c7);
+      color: var(--trustrails-warning-text, #92400e);
+    }
+
+    .contact-confidence.low {
+      background: var(--trustrails-muted-bg, #f3f4f6);
+      color: var(--trustrails-muted-text, #6b7280);
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--trustrails-muted-color, #6b7280);
+    }
+
+    .no-results h3 {
+      margin: 0 0 8px 0;
+      font-size: 18px;
+      color: var(--trustrails-heading-color, #1f2937);
+    }
+
+    /* Disabled State */
     .disabled-message {
       text-align: center;
-      padding: 32px 24px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: var(--trustrails-border-radius, 8px);
+      padding: 40px 24px;
+      background: var(--trustrails-disabled-bg, #f8fafc);
+      border: 1px solid var(--trustrails-disabled-border, #e2e8f0);
+      border-radius: var(--trustrails-border-radius, 12px);
       margin: 16px 0;
     }
 
@@ -321,7 +745,7 @@ export class TrustRailsWidget extends LitElement {
       width: 48px;
       height: 48px;
       margin: 0 auto 16px;
-      background: #64748b;
+      background: var(--trustrails-disabled-icon, #64748b);
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -334,12 +758,12 @@ export class TrustRailsWidget extends LitElement {
       margin: 0 0 12px 0;
       font-size: 20px;
       font-weight: 600;
-      color: #334155;
+      color: var(--trustrails-disabled-heading, #334155);
     }
 
     .disabled-message p {
       margin: 0 0 20px 0;
-      color: #64748b;
+      color: var(--trustrails-disabled-text, #64748b);
       line-height: 1.5;
       font-size: 15px;
     }
@@ -347,19 +771,19 @@ export class TrustRailsWidget extends LitElement {
     .disabled-message .contact-link {
       display: inline-flex;
       align-items: center;
-      color: var(--trustrails-primary-color, #1a73e8);
+      color: var(--trustrails-primary-color, #3b82f6);
       text-decoration: none;
       font-weight: 500;
       font-size: 14px;
       gap: 6px;
-      padding: 8px 16px;
-      border: 1px solid var(--trustrails-primary-color, #1a73e8);
-      border-radius: 6px;
+      padding: 10px 20px;
+      border: 1px solid var(--trustrails-primary-color, #3b82f6);
+      border-radius: var(--trustrails-button-radius, 8px);
       transition: all 0.2s;
     }
 
     .disabled-message .contact-link:hover {
-      background: var(--trustrails-primary-color, #1a73e8);
+      background: var(--trustrails-primary-color, #3b82f6);
       color: white;
     }
 
@@ -368,200 +792,160 @@ export class TrustRailsWidget extends LitElement {
       font-size: 12px;
     }
 
-    .search-container {
-      padding: 24px 0;
+    /* Mobile Responsiveness and Accessibility */
+    @media (max-width: 768px) {
+      :host {
+        max-width: 100%;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        min-height: 100vh;
+      }
+
+      .header {
+        padding: 16px 20px;
+      }
+
+      .content {
+        padding: 20px;
+      }
+
+      .flow-title {
+        font-size: 20px;
+      }
+
+      .flow-subtitle {
+        font-size: 14px;
+      }
+
+      .flow-selection {
+        padding: 20px 0;
+      }
+
+      .recordkeeper-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+
+      .recordkeeper-card {
+        padding: 16px 12px;
+        min-height: 100px;
+      }
+
+      .recordkeeper-logo {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+      }
+
+      .recordkeeper-name {
+        font-size: 12px;
+      }
+
+      .search-input {
+        padding: 14px 16px 14px 40px;
+      }
+
+      .search-icon {
+        left: 14px;
+      }
     }
 
-    .search-header {
-      margin-bottom: 24px;
+    @media (max-width: 480px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px;
+      }
+
+      .progress-indicator {
+        align-self: flex-end;
+      }
+
+      .content {
+        padding: 16px;
+      }
+
+      .result-details {
+        flex-direction: column;
+        gap: 8px;
+      }
     }
 
-    .search-header h2 {
-      margin: 0 0 8px 0;
-      font-size: 24px;
-      color: var(--trustrails-heading-color, #1a1a1a);
-    }
-
-    .search-header p {
-      margin: 0;
-      color: #6b7280;
-      line-height: 1.5;
-    }
-
-    .search-form {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 24px;
-    }
-
-    .search-input {
-      flex: 1;
-      padding: 12px 16px;
-      font-size: 16px;
-      border: 1px solid var(--trustrails-border-color, #e0e0e0);
-      border-radius: var(--trustrails-button-radius, 6px);
-      transition: border-color 0.2s;
-    }
-
+    /* Accessibility Enhancements */
+    .button:focus,
+    .flow-option:focus,
+    .recordkeeper-card:focus,
     .search-input:focus {
-      outline: none;
-      border-color: var(--trustrails-primary-color, #1a73e8);
+      outline: 2px solid var(--trustrails-primary-color, #3b82f6);
+      outline-offset: 2px;
     }
 
-    .search-button {
-      padding: 12px 32px;
-      background: var(--trustrails-primary-color, #1a73e8);
-      color: white;
-      border: none;
-      border-radius: var(--trustrails-button-radius, 6px);
-      font-size: 16px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
 
-    .search-button:hover:not(:disabled) {
-      background: var(--trustrails-primary-hover, #1557b0);
+    @media (prefers-color-scheme: dark) {
+      :host {
+        --trustrails-background: #1f2937;
+        --trustrails-text-color: #f9fafb;
+        --trustrails-heading-color: #ffffff;
+        --trustrails-muted-color: #9ca3af;
+        --trustrails-border-color: #374151;
+        --trustrails-card-bg: #374151;
+        --trustrails-input-bg: #374151;
+        --trustrails-hover-bg: #4b5563;
+        --trustrails-header-bg: linear-gradient(135deg, #374151 0%, #4b5563 100%);
+      }
     }
 
-    .search-button:disabled {
-      background: #9ca3af;
-      cursor: not-allowed;
+    /* High Contrast Mode */
+    @media (prefers-contrast: high) {
+      :host {
+        --trustrails-border-color: #000000;
+        --trustrails-text-color: #000000;
+        --trustrails-background: #ffffff;
+      }
     }
 
-    .search-results {
-      border-top: 1px solid var(--trustrails-border-color, #e0e0e0);
-      padding-top: 24px;
-    }
-
-    .search-results h3 {
-      margin: 0 0 16px 0;
-      font-size: 18px;
-      color: var(--trustrails-heading-color, #1a1a1a);
-    }
-
-    .result-item {
-      padding: 16px;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      margin-bottom: 12px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .result-item:hover {
-      background: #f3f4f6;
-      border-color: var(--trustrails-primary-color, #1a73e8);
-    }
-
-    .result-item.selected {
-      background: #eff6ff;
-      border-color: var(--trustrails-primary-color, #1a73e8);
-      border-width: 2px;
-    }
-
-    .result-item h4 {
-      margin: 0 0 8px 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--trustrails-heading-color, #1a1a1a);
-    }
-
-    .result-item .details {
-      display: flex;
-      gap: 16px;
-      font-size: 14px;
-      color: #6b7280;
-    }
-
-    .result-item .detail-item {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .result-item .primary-contact {
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid #e5e7eb;
-    }
-
-    .result-item .contact-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-
-    .result-item .contact-name {
-      font-weight: 600;
-      color: var(--trustrails-primary-color, #1a73e8);
-    }
-
-    .result-item .contact-confidence {
-      display: inline-block;
-      padding: 2px 8px;
-      font-size: 12px;
-      border-radius: 12px;
-      font-weight: 600;
-    }
-
-    .result-item .contact-confidence.high {
-      background: #10b981;
-      color: white;
-    }
-
-    .result-item .contact-confidence.medium {
-      background: #f59e0b;
-      color: white;
-    }
-
-    .result-item .contact-confidence.low {
-      background: #6b7280;
-      color: white;
-    }
-
-    .result-item .contact-guidance {
-      font-size: 13px;
-      color: #4b5563;
-      font-style: italic;
-      margin-top: 4px;
-    }
-
-    .no-results {
-      text-align: center;
-      padding: 48px 24px;
-      background: #f9fafb;
-      border-radius: 6px;
-      color: #6b7280;
-    }
-
-    .no-results h3 {
-      margin: 0 0 8px 0;
-      font-size: 18px;
-      color: #374151;
-    }
-
+    /* Loading States */
     .searching-indicator {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 12px;
       padding: 32px;
-      color: #6b7280;
+      color: var(--trustrails-muted-color, #6b7280);
     }
 
     .small-spinner {
       width: 20px;
       height: 20px;
-      border: 2px solid var(--trustrails-border-color, #e0e0e0);
-      border-top-color: var(--trustrails-primary-color, #1a73e8);
+      border: 2px solid var(--trustrails-border-color, #e5e7eb);
+      border-top-color: var(--trustrails-primary-color, #3b82f6);
       border-radius: 50%;
       animation: spin 1s linear infinite;
+    }
+
+    /* Screen Reader Only Content */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
   `;
 
@@ -1157,8 +1541,51 @@ export class TrustRailsWidget extends LitElement {
       composed: true
     }));
 
-    // Move to next step
-    this.currentStep = 2;
+    // Dispatch start event to indicate user is beginning rollover process
+    this.dispatchEvent(new CustomEvent('trustrails-start', {
+      detail: {
+        plan: plan,
+        step: 'plan-selected'
+      },
+      bubbles: true,
+      composed: true
+    }));
+  }
+
+  // Flow navigation methods
+  private handleFlowSelection(flow: 'recordkeeper' | 'employer') {
+    this.currentFlow = flow;
+    if (this.isDevelopment) {
+      console.log('Flow selected:', flow);
+    }
+  }
+
+  private handleBackToStart() {
+    this.currentFlow = 'start';
+    this.selectedRecordkeeper = null;
+    this.searchQuery = '';
+    this.searchResults = [];
+    this.hasSearched = false;
+  }
+
+  private handleRecordkeeperSelection(recordkeeperId: string) {
+    this.selectedRecordkeeper = recordkeeperId;
+
+    if (recordkeeperId === 'other') {
+      // If "Other" is selected, switch to employer search flow
+      this.currentFlow = 'employer';
+    } else {
+      // Search for plans with this recordkeeper
+      const recordkeeper = MAJOR_RECORDKEEPERS.find(rk => rk.id === recordkeeperId);
+      if (recordkeeper) {
+        this.searchQuery = recordkeeper.name;
+        this.handleSearch(new Event('submit'));
+      }
+    }
+
+    if (this.isDevelopment) {
+      console.log('Recordkeeper selected:', recordkeeperId);
+    }
   }
 
   // Public getter methods for partner integration
@@ -1458,12 +1885,26 @@ export class TrustRailsWidget extends LitElement {
   override render() {
     return html`
       <div class="header">
-        <div class="logo">TR</div>
-        <div class="title">401(k) Rollover Assistant</div>
+        <div class="header-content">
+          <div class="logo">TR</div>
+          <div>
+            <h1 class="title">401(k) Rollover Assistant</h1>
+            <p class="subtitle">Find your plan and get contact information</p>
+          </div>
+        </div>
+        ${this.currentFlow !== 'start' ? html`
+          <div class="progress-indicator">
+            <span class="sr-only">Step ${this.currentFlow === 'recordkeeper' ? '1' : '2'} of 2</span>
+            <div class="progress-dots">
+              <div class="progress-dot ${this.currentFlow === 'recordkeeper' ? 'active' : ''}"></div>
+              <div class="progress-dot ${this.currentFlow === 'employer' ? 'active' : ''}"></div>
+            </div>
+          </div>
+        ` : ''}
       </div>
 
       ${this.error ? html`
-        <div class="error">
+        <div class="error" role="alert" aria-live="polite">
           ${this.error}
         </div>
       ` : ''}
@@ -1471,13 +1912,14 @@ export class TrustRailsWidget extends LitElement {
       <div class="content">
         ${this.isDisabled ? this.renderDisabledMessage() :
         this.isLoading ? html`
-          <div class="loading">
-            <div class="spinner"></div>
+          <div class="loading" role="status" aria-live="polite">
+            <div class="spinner" aria-hidden="true"></div>
+            <div class="loading-text">Initializing secure connection...</div>
           </div>
         ` : this.isAuthenticated ? html`
           ${this.userEmail ? html`
-            <div class="user-status ${this.isUserSessionReady ? 'ready' : ''}">
-              <div class="user-status-indicator"></div>
+            <div class="user-status ${this.isUserSessionReady ? 'ready' : ''}" role="status" aria-live="polite">
+              <div class="user-status-indicator" aria-hidden="true"></div>
               <span>
                 ${this.isUserSessionReady
                   ? `User session ready for ${this.userEmail}${this.userSession?.is_new_user ? ' (new user)' : ''}`
@@ -1487,150 +1929,225 @@ export class TrustRailsWidget extends LitElement {
             </div>
           ` : ''}
 
-          ${this.currentStep > 0 ? html`
-            <div class="steps">
-              <div class="step ${this.currentStep >= 1 ? 'active' : ''}">
-                <div class="step-number">1</div>
-                <div class="step-label">Account Info</div>
-              </div>
-              <div class="step ${this.currentStep >= 2 ? 'active' : ''}">
-                <div class="step-number">2</div>
-                <div class="step-label">Plan Search</div>
-              </div>
-              <div class="step ${this.currentStep >= 3 ? 'active' : ''}">
-                <div class="step-number">3</div>
-                <div class="step-label">Verification</div>
-              </div>
-              <div class="step ${this.currentStep >= 4 ? 'active' : ''}">
-                <div class="step-number">4</div>
-                <div class="step-label">Complete</div>
-              </div>
+          ${this.renderCurrentFlow()}
+        ` : html`
+          <div class="loading" role="status" aria-live="polite">
+            <div class="spinner" aria-hidden="true"></div>
+            <div class="loading-text">Initializing secure connection...</div>
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  private renderCurrentFlow() {
+    switch (this.currentFlow) {
+      case 'start':
+        return this.renderFlowSelection();
+      case 'recordkeeper':
+        return this.renderRecordkeeperFlow();
+      case 'employer':
+        return this.renderEmployerFlow();
+      default:
+        return this.renderFlowSelection();
+    }
+  }
+
+  private renderFlowSelection() {
+    return html`
+      <div class="flow-selection">
+        <h2 class="flow-title">How would you like to find your 401(k)?</h2>
+        <p class="flow-subtitle">Choose the option that works best for you</p>
+
+        <div class="flow-options">
+          <button
+            class="flow-option"
+            @click=${() => this.handleFlowSelection('recordkeeper')}
+            aria-describedby="recordkeeper-desc"
+          >
+            <div class="flow-option-icon" aria-hidden="true">🏦</div>
+            <h3 class="flow-option-title">I know my recordkeeper</h3>
+            <p class="flow-option-desc" id="recordkeeper-desc">
+              Select from major providers like Fidelity, Empower, Principal, and more
+            </p>
+          </button>
+
+          <button
+            class="flow-option"
+            @click=${() => this.handleFlowSelection('employer')}
+            aria-describedby="employer-desc"
+          >
+            <div class="flow-option-icon" aria-hidden="true">🔍</div>
+            <h3 class="flow-option-title">Search by employer</h3>
+            <p class="flow-option-desc" id="employer-desc">
+              Find your plan by searching for your current or former employer
+            </p>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderRecordkeeperFlow() {
+    return html`
+      <div class="recordkeeper-flow">
+        <button class="back-button" @click=${this.handleBackToStart}>
+          ← Back to options
+        </button>
+
+        <div class="flow-header">
+          <h2>Select Your Recordkeeper</h2>
+          <p>Choose the company that manages your 401(k) plan</p>
+        </div>
+
+        <div class="recordkeeper-grid" role="grid" aria-label="Recordkeeper selection">
+          ${MAJOR_RECORDKEEPERS.map(recordkeeper => html`
+            <button
+              class="recordkeeper-card ${this.selectedRecordkeeper === recordkeeper.id ? 'selected' : ''}"
+              @click=${() => this.handleRecordkeeperSelection(recordkeeper.id)}
+              role="gridcell"
+              aria-pressed=${this.selectedRecordkeeper === recordkeeper.id}
+              aria-describedby="rk-${recordkeeper.id}-desc"
+            >
+              <div class="recordkeeper-logo" aria-hidden="true">${recordkeeper.logo}</div>
+              <p class="recordkeeper-name">${recordkeeper.name}</p>
+              ${recordkeeper.marketShare > 0 ? html`
+                <span class="sr-only" id="rk-${recordkeeper.id}-desc">
+                  ${recordkeeper.marketShare}% market share
+                </span>
+              ` : ''}
+            </button>
+          `)}
+        </div>
+
+        ${this.isSearching ? html`
+          <div class="searching-indicator" role="status" aria-live="polite">
+            <div class="small-spinner" aria-hidden="true"></div>
+            <span>Searching for plans...</span>
+          </div>
+        ` : ''}
+
+        ${this.renderSearchResults()}
+      </div>
+    `;
+  }
+
+  private renderEmployerFlow() {
+    return html`
+      <div class="employer-search">
+        <button class="back-button" @click=${this.handleBackToStart}>
+          ← Back to options
+        </button>
+
+        <div class="flow-header">
+          <h2>Search by Employer</h2>
+          <p>Enter your current or former employer's name</p>
+        </div>
+
+        <form class="search-form" @submit=${this.handleSearch}>
+          <div class="search-icon" aria-hidden="true">🔍</div>
+          <input
+            type="search"
+            class="search-input"
+            placeholder="Enter your employer's name..."
+            .value=${this.searchQuery}
+            @input=${this.handleSearchInput}
+            ?disabled=${this.isSearching}
+            aria-label="Employer name search"
+            autocomplete="organization"
+          />
+        </form>
+
+        ${this.isSearching ? html`
+          <div class="searching-indicator" role="status" aria-live="polite">
+            <div class="small-spinner" aria-hidden="true"></div>
+            <span>Searching Department of Labor database...</span>
+          </div>
+        ` : ''}
+
+        ${this.renderSearchResults()}
+      </div>
+    `;
+  }
+
+  private renderSearchResults() {
+    if (!this.hasSearched && !this.isSearching) {
+      return '';
+    }
+
+    return html`
+      <div class="search-results" role="region" aria-label="Search results">
+        ${this.searchResults.length > 0 ? html`
+          <div class="results-header">
+            <div class="results-count" aria-live="polite">
+              Found ${this.searchResults.length} matching plan${this.searchResults.length === 1 ? '' : 's'}
             </div>
-          ` : ''}
+          </div>
 
-          ${this.currentStep === 0 ? html`
-            <div class="search-container">
-              <div class="search-header">
-                <h2>Find Your 401(k) Plan</h2>
-                <p>Search for your employer or plan name to get started with your rollover</p>
+          ${this.searchResults.map((result, index) => html`
+            <div
+              class="result-item"
+              @click=${() => this.handleSelectPlan(result)}
+              @keydown=${(e: KeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  this.handleSelectPlan(result);
+                }
+              }}
+              tabindex="0"
+              role="button"
+              aria-describedby="result-${index}-desc"
+            >
+              <h3 class="result-title">
+                ${result.planName || result.PLAN_NAME || 'Unnamed Plan'}
+              </h3>
+
+              <div class="result-details" id="result-${index}-desc">
+                <div class="result-detail">
+                  <span aria-hidden="true">🏢</span>
+                  <span>${result.company?.name || result.SPONSOR_NAME || 'Unknown Sponsor'}</span>
+                </div>
+                ${(result.company?.city || result.SPONS_CITY) ? html`
+                  <div class="result-detail">
+                    <span aria-hidden="true">📍</span>
+                    <span>${result.company?.city || result.SPONS_CITY}, ${result.company?.state || result.SPONS_STATE || ''}</span>
+                  </div>
+                ` : ''}
+                ${result.planDetails?.participants || result.TOT_PARTCP_CNT ? html`
+                  <div class="result-detail">
+                    <span aria-hidden="true">👥</span>
+                    <span>${result.planDetails?.participants || result.TOT_PARTCP_CNT} participants</span>
+                  </div>
+                ` : ''}
               </div>
 
-              <form class="search-form" @submit=${this.handleSearch}>
-                <input
-                  type="text"
-                  class="search-input"
-                  placeholder="Enter employer or plan name..."
-                  .value=${this.searchQuery}
-                  @input=${this.handleSearchInput}
-                  ?disabled=${this.isSearching}
-                />
-                <button
-                  type="submit"
-                  class="search-button"
-                  ?disabled=${!this.searchQuery.trim() || this.isSearching}
-                >
-                  ${this.isSearching ? html`
-                    <div class="small-spinner"></div>
-                    Searching...
-                  ` : 'Search'}
-                </button>
-              </form>
-
-              ${this.isSearching ? html`
-                <div class="searching-indicator">
-                  <div class="small-spinner"></div>
-                  <span>Searching Department of Labor database...</span>
-                </div>
-              ` : this.hasSearched ? html`
-                <div class="search-results">
-                  ${this.searchResults.length > 0 ? html`
-                    <h3>Found ${this.searchResults.length} matching plan${this.searchResults.length === 1 ? '' : 's'}</h3>
-                    ${this.searchResults.map(result => html`
-                      <div class="result-item" @click=${() => this.handleSelectPlan(result)}>
-                        <h4>${result.planName || result.PLAN_NAME || 'Unnamed Plan'}</h4>
-                        <div class="details">
-                          <div class="detail-item">
-                            <span>🏢</span>
-                            <span>${result.company?.name || result.SPONSOR_NAME || 'Unknown Sponsor'}</span>
-                          </div>
-                          ${(result.company?.city || result.SPONS_CITY) ? html`
-                            <div class="detail-item">
-                              <span>📍</span>
-                              <span>${result.company?.city || result.SPONS_CITY}, ${result.company?.state || result.SPONS_STATE || ''}</span>
-                            </div>
-                          ` : ''}
-                          ${result.planDetails?.participants || result.TOT_PARTCP_CNT ? html`
-                            <div class="detail-item">
-                              <span>👥</span>
-                              <span>${result.planDetails?.participants || result.TOT_PARTCP_CNT} participants</span>
-                            </div>
-                          ` : ''}
-                        </div>
-                        ${result.primaryContact ? html`
-                          <div class="primary-contact">
-                            <div class="contact-header">
-                              <span>📞 Primary Contact:</span>
-                              <span class="contact-name">${result.primaryContact.name}</span>
-                              <span class="contact-confidence ${result.contactConfidence}">
-                                ${result.contactConfidence === 'high' ? '✓ Verified' :
-                                  result.contactConfidence === 'medium' ? 'Likely' : 'Possible'}
-                              </span>
-                            </div>
-                            <div class="detail-item">
-                              <span>Role:</span>
-                              <span>${this.formatRelation(result.primaryContact.relation)}</span>
-                            </div>
-                            ${result.contactGuidance ? html`
-                              <div class="contact-guidance">
-                                💡 ${result.contactGuidance}
-                              </div>
-                            ` : ''}
-                          </div>
-                        ` : ''}
-                      </div>
-                    `)}
-                  ` : html`
-                    <div class="no-results">
-                      <h3>No plans found</h3>
-                      <p>Try searching with a different employer or plan name</p>
+              ${result.primaryContact ? html`
+                <div class="result-contact">
+                  <div class="contact-name">
+                    ${result.primaryContact.name}
+                    <span class="contact-confidence ${result.contactConfidence || 'medium'}">
+                      ${result.contactConfidence === 'high' ? 'Verified' :
+                        result.contactConfidence === 'medium' ? 'Likely' : 'Possible'}
+                    </span>
+                  </div>
+                  <div class="result-detail">
+                    <span>Role: ${this.formatRelation(result.primaryContact.relation)}</span>
+                  </div>
+                  ${result.contactGuidance ? html`
+                    <div class="contact-guidance">
+                      💡 ${result.contactGuidance}
                     </div>
-                  `}
+                  ` : ''}
                 </div>
               ` : ''}
             </div>
-          ` : this.currentStep === 1 ? html`
-            <div class="welcome">
-              <h2>Account Information</h2>
-              <p>Please provide your account details to continue with the rollover process.</p>
-              <button
-                class="button"
-                @click=${() => this.currentStep = 2}
-              >
-                Continue
-              </button>
-            </div>
-          ` : this.currentStep === 2 ? html`
-            <div class="welcome">
-              <h2>Verify Your Plan</h2>
-              <p>Please verify the plan information is correct.</p>
-              <button
-                class="button"
-                @click=${() => this.currentStep = 3}
-              >
-                Verify
-              </button>
-            </div>
-          ` : html`
-            <div class="welcome">
-              <h2>Rollover Complete</h2>
-              <p>Your rollover request has been submitted successfully.</p>
-            </div>
-          `}
-        ` : html`
-          <div class="welcome">
-            <p>Initializing secure connection...</p>
+          `)}
+        ` : this.hasSearched ? html`
+          <div class="no-results" role="status">
+            <h3>No plans found</h3>
+            <p>Try searching with a different employer or plan name</p>
           </div>
-        `}
+        ` : ''}
       </div>
     `;
   }

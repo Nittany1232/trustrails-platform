@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hierarchical Search Widget - Themeable Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+    }
+
+    .demo-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .demo-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .demo-header h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #1a1a1a;
+    }
+
+    .demo-header p {
+      color: #666;
+    }
+
+    .theme-controls {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .theme-buttons {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    .theme-button {
+      padding: 0.5rem 1rem;
+      border: 2px solid #e0e0e0;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+
+    .theme-button:hover {
+      border-color: #2563eb;
+      background: #f0f7ff;
+    }
+
+    .theme-button.active {
+      border-color: #2563eb;
+      background: #2563eb;
+      color: white;
+    }
+
+    .demo-sections {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-bottom: 3rem;
+    }
+
+    @media (max-width: 1024px) {
+      .demo-sections {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .demo-section {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .section-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: #1a1a1a;
+    }
+
+    .section-description {
+      font-size: 0.875rem;
+      color: #666;
+      margin-bottom: 1.5rem;
+    }
+
+    .widget-wrapper {
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Theme: Default (Clean & Neutral) */
+    .widget-wrapper.theme-default {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+    }
+
+    /* Theme: Corporate Blue */
+    .widget-wrapper.theme-corporate {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border: 1px solid #0284c7;
+    }
+
+    .theme-corporate trustrails-hierarchical-search {
+      --primary-color: #0284c7;
+      --secondary-color: #0c4a6e;
+      --border: #bae6fd;
+      --surface: #f0f9ff;
+    }
+
+    /* Theme: Dark Mode */
+    .widget-wrapper.theme-dark {
+      background: #1e293b;
+      border: 1px solid #334155;
+    }
+
+    .theme-dark trustrails-hierarchical-search {
+      --background: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --primary-color: #3b82f6;
+    }
+
+    /* Theme: Minimal */
+    .widget-wrapper.theme-minimal {
+      background: #fafafa;
+      border: none;
+    }
+
+    .theme-minimal trustrails-hierarchical-search {
+      --primary-color: #171717;
+      --border: #f5f5f5;
+      --surface: #fafafa;
+      --radius: 0px;
+      --shadow: none;
+    }
+
+    /* Theme: Bank/Financial */
+    .widget-wrapper.theme-bank {
+      background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+      border: 1px solid #059669;
+    }
+
+    .theme-bank trustrails-hierarchical-search {
+      --primary-color: #059669;
+      --secondary-color: #064e3b;
+      --surface: #f0fdf4;
+      --border: #a7f3d0;
+    }
+
+    /* Theme: Purple/Modern */
+    .widget-wrapper.theme-modern {
+      background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+      border: 1px solid #9333ea;
+    }
+
+    .theme-modern trustrails-hierarchical-search {
+      --primary-color: #9333ea;
+      --secondary-color: #581c87;
+      --surface: #faf5ff;
+      --border: #e9d5ff;
+      --radius: 16px;
+    }
+
+    .code-example {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 1rem;
+      border-radius: 8px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 0.875rem;
+      overflow-x: auto;
+      margin-top: 1rem;
+    }
+
+    .code-comment {
+      color: #64748b;
+    }
+
+    .integration-guide {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 2rem;
+    }
+
+    .guide-step {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      align-items: start;
+    }
+
+    .step-number {
+      width: 32px;
+      height: 32px;
+      background: #2563eb;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .step-content h3 {
+      margin-bottom: 0.5rem;
+      font-size: 1rem;
+    }
+
+    .step-content p {
+      color: #666;
+      font-size: 0.875rem;
+    }
+
+    .feature-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #333;
+    }
+
+    .feature-icon {
+      color: #10b981;
+      font-size: 1.125rem;
+    }
+
+    .event-log {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-top: 1rem;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 0.75rem;
+    }
+
+    .event-entry {
+      padding: 0.25rem 0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <div class="demo-header">
+      <h1>🎨 TrustRails Hierarchical Search Widget</h1>
+      <p>Plain, themeable widget for 401(k) custodian search - Better UX than Capitalize</p>
+    </div>
+
+    <!-- Theme Controls -->
+    <div class="theme-controls">
+      <h2 class="section-title">Choose a Theme</h2>
+      <p class="section-description">See how the widget adapts to different brand styles</p>
+
+      <div class="theme-buttons">
+        <button class="theme-button active" data-theme="default">Default</button>
+        <button class="theme-button" data-theme="corporate">Corporate Blue</button>
+        <button class="theme-button" data-theme="dark">Dark Mode</button>
+        <button class="theme-button" data-theme="minimal">Minimal</button>
+        <button class="theme-button" data-theme="bank">Bank/Financial</button>
+        <button class="theme-button" data-theme="modern">Purple/Modern</button>
+      </div>
+    </div>
+
+    <!-- Integration Guide -->
+    <div class="integration-guide">
+      <h2 class="section-title">🚀 Quick Integration Guide</h2>
+
+      <div class="guide-step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h3>Add the Widget Script</h3>
+          <p>Include our lightweight Web Component (only 19KB gzipped)</p>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h3>Add Your Theme Variables</h3>
+          <p>Customize colors, fonts, and spacing to match your brand</p>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h3>Place the Widget</h3>
+          <p>Add the custom element anywhere on your page</p>
+        </div>
+      </div>
+
+      <div class="feature-list">
+        <div class="feature-item">
+          <span class="feature-icon">✅</span>
+          <span>Works with any framework</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">✅</span>
+          <span>No dependencies</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">✅</span>
+          <span>Mobile responsive</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">✅</span>
+          <span>WCAG 2.1 AA compliant</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">✅</span>
+          <span>84,760+ plans indexed</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">✅</span>
+          <span>Real-time BigQuery search</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Demo Sections -->
+    <div class="demo-sections">
+      <!-- Live Widget Demo -->
+      <div class="demo-section">
+        <h2 class="section-title">Live Demo</h2>
+        <p class="section-description">
+          Try the widget with our BigQuery backend (84,760 plans, 68,316 sponsors)
+        </p>
+
+        <div id="widget-container" class="widget-wrapper theme-default">
+          <trustrails-hierarchical-search
+            api-endpoint="http://localhost:8082"
+            debug="true">
+          </trustrails-hierarchical-search>
+        </div>
+
+        <div class="event-log" id="event-log">
+          <div class="event-entry">Widget initialized and ready</div>
+        </div>
+      </div>
+
+      <!-- Code Example -->
+      <div class="demo-section">
+        <h2 class="section-title">Integration Code</h2>
+        <p class="section-description">Copy and customize for your website</p>
+
+        <div class="code-example">
+<span class="code-comment">&lt;!-- 1. Include the widget script --&gt;</span>
+&lt;script type="module"&gt;
+  import './trustrails-widget.js';
+&lt;/script&gt;
+
+<span class="code-comment">&lt;!-- 2. Add theme variables (optional) --&gt;</span>
+&lt;style&gt;
+  trustrails-hierarchical-search {
+    --primary-color: #2563eb;
+    --border: #e2e8f0;
+    --radius: 8px;
+    --font-family: 'Inter', sans-serif;
+  }
+&lt;/style&gt;
+
+<span class="code-comment">&lt;!-- 3. Place the widget --&gt;</span>
+&lt;trustrails-hierarchical-search
+  api-endpoint="https://api.trustrails.com"
+  partner-id="your-partner-id"&gt;
+&lt;/trustrails-hierarchical-search&gt;
+        </div>
+
+        <h3 style="margin-top: 1.5rem; margin-bottom: 1rem;">Available CSS Variables</h3>
+        <div class="code-example">
+--primary-color: #2563eb;
+--secondary-color: #64748b;
+--background: #ffffff;
+--surface: #f8fafc;
+--border: #e2e8f0;
+--text-primary: #0f172a;
+--text-secondary: #64748b;
+--radius: 8px;
+--shadow: 0 1px 3px rgba(0,0,0,0.1);
+--font-family: system-ui;
+--transition: 150ms ease;
+        </div>
+
+        <h3 style="margin-top: 1.5rem; margin-bottom: 1rem;">Event Handling</h3>
+        <div class="code-example">
+<span class="code-comment">// Listen for plan selection</span>
+widget.addEventListener('plan-selected', (e) => {
+  const plan = e.detail;
+  console.log('Selected:', plan.planName);
+  console.log('Custodian:', plan.primaryContact?.name);
+
+  <span class="code-comment">// Initiate rollover process</span>
+  startRollover(plan);
+});
+        </div>
+      </div>
+    </div>
+
+    <!-- Scrollable Embedded Widget Demo -->
+    <div class="demo-section" style="margin-bottom: 2rem;">
+      <h2 class="section-title">📱 Embedded Widget with Fixed Height</h2>
+      <p class="section-description">
+        Perfect for embedded contexts where the widget shouldn't grow the page. Shows 5 results initially with internal scrolling for more.
+      </p>
+
+      <div class="widget-wrapper theme-default">
+        <trustrails-hierarchical-search
+          api-endpoint="http://localhost:8082"
+          scrollable="true"
+          debug="true">
+        </trustrails-hierarchical-search>
+      </div>
+
+      <div style="background: #f0f9ff; border-left: 4px solid #0284c7; padding: 1rem; margin-top: 1rem; border-radius: 4px;">
+        <strong>💡 Tip:</strong> The <code>scrollable</code> attribute limits the widget to 400px height with internal scrolling. This prevents the widget from expanding and affecting your page layout.
+      </div>
+    </div>
+
+    <!-- Comparison Section -->
+    <div class="demo-section">
+      <h2 class="section-title">📊 Why Our Widget is Better Than Capitalize</h2>
+
+      <table style="width: 100%; margin-top: 1rem; font-size: 0.875rem;">
+        <thead>
+          <tr style="background: #f8fafc; text-align: left;">
+            <th style="padding: 0.75rem;">Feature</th>
+            <th style="padding: 0.75rem;">TrustRails</th>
+            <th style="padding: 0.75rem;">Capitalize</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 0.75rem;">Search Options</td>
+            <td style="padding: 0.75rem; color: #059669;">✅ Dual flow (employer + provider)</td>
+            <td style="padding: 0.75rem;">Single flow only</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 0.75rem;">Data Coverage</td>
+            <td style="padding: 0.75rem; color: #059669;">✅ 84,760 plans</td>
+            <td style="padding: 0.75rem;">Limited dataset</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 0.75rem;">Hierarchical Display</td>
+            <td style="padding: 0.75rem; color: #059669;">✅ Shows full path: Employer → Plan → Custodian</td>
+            <td style="padding: 0.75rem;">Basic list view</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 0.75rem;">Themeable</td>
+            <td style="padding: 0.75rem; color: #059669;">✅ 40+ CSS variables</td>
+            <td style="padding: 0.75rem;">Fixed styling</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 0.75rem;">Bundle Size</td>
+            <td style="padding: 0.75rem; color: #059669;">✅ 19KB gzipped</td>
+            <td style="padding: 0.75rem;">100KB+ with React</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 0.75rem;">Confidence Indicators</td>
+            <td style="padding: 0.75rem; color: #059669;">✅ Shows data quality</td>
+            <td style="padding: 0.75rem;">No indicators</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import the widget
+    import '@trustrails/rollover-widget';
+
+    // Theme switching
+    const themeButtons = document.querySelectorAll('.theme-button');
+    const widgetContainer = document.getElementById('widget-container');
+    const eventLog = document.getElementById('event-log');
+
+    themeButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        // Update active button
+        themeButtons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+
+        // Update widget theme
+        const theme = button.dataset.theme;
+        widgetContainer.className = `widget-wrapper theme-${theme}`;
+
+        // Log theme change
+        logEvent(`Theme changed to: ${theme}`);
+      });
+    });
+
+    // Widget event handling
+    const widget = document.querySelector('trustrails-hierarchical-search');
+
+    widget?.addEventListener('plan-selected', (e) => {
+      const plan = e.detail;
+      logEvent(`Plan selected: ${plan.planName}`);
+      if (plan.primaryContact?.name) {
+        logEvent(`Custodian: ${plan.primaryContact.name}`);
+      }
+    });
+
+    function logEvent(message) {
+      const entry = document.createElement('div');
+      entry.className = 'event-entry';
+      const time = new Date().toLocaleTimeString();
+      entry.textContent = `[${time}] ${message}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+
+      // Keep only last 10 events
+      while (eventLog.children.length > 10) {
+        eventLog.removeChild(eventLog.lastChild);
+      }
+    }
+
+    // Log initial load
+    logEvent('Widget initialized and ready');
+  </script>
+</body>
+</html>

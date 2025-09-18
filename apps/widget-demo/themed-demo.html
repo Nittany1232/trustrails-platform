@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Themed Widget Demo | TrustRails</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .demo-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .demo-header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .demo-title {
+      font-size: 32px;
+      font-weight: 700;
+      color: #1f2937;
+      margin-bottom: 8px;
+    }
+
+    .demo-subtitle {
+      font-size: 16px;
+      color: #6b7280;
+    }
+
+    .themes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+      gap: 40px;
+      margin-bottom: 40px;
+    }
+
+    .theme-demo {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    .theme-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #1f2937;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .theme-badge {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .theme-badge.default {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .theme-badge.branded {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .theme-badge.dark {
+      background: #374151;
+      color: #f9fafb;
+    }
+
+    .theme-badge.minimal {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+
+    /* Default Theme - Blue */
+    .widget-default {
+      --trustrails-primary-color: #3b82f6;
+      --trustrails-primary-hover: #2563eb;
+      --trustrails-primary-bg: #eff6ff;
+    }
+
+    /* Corporate/Bank Theme - Green */
+    .widget-corporate {
+      --trustrails-primary-color: #059669;
+      --trustrails-primary-hover: #047857;
+      --trustrails-primary-bg: #ecfdf5;
+      --trustrails-header-bg: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+      --trustrails-font-family: 'Georgia', serif;
+      --trustrails-border-radius: 4px;
+      --trustrails-card-radius: 4px;
+    }
+
+    /* Dark Theme */
+    .widget-dark {
+      --trustrails-background: #1f2937;
+      --trustrails-text-color: #f9fafb;
+      --trustrails-heading-color: #ffffff;
+      --trustrails-muted-color: #9ca3af;
+      --trustrails-border-color: #374151;
+      --trustrails-card-bg: #374151;
+      --trustrails-input-bg: #374151;
+      --trustrails-hover-bg: #4b5563;
+      --trustrails-header-bg: linear-gradient(135deg, #374151 0%, #4b5563 100%);
+      --trustrails-primary-color: #60a5fa;
+      --trustrails-primary-hover: #3b82f6;
+      --trustrails-primary-bg: #1e3a8a;
+    }
+
+    /* Minimal Theme */
+    .widget-minimal {
+      --trustrails-shadow: none;
+      --trustrails-border-color: #e5e7eb;
+      --trustrails-header-bg: #ffffff;
+      --trustrails-primary-color: #6b7280;
+      --trustrails-primary-hover: #4b5563;
+      --trustrails-primary-bg: #f9fafb;
+      --trustrails-border-radius: 2px;
+      --trustrails-card-radius: 2px;
+      --trustrails-logo-size: 28px;
+      --trustrails-title-size: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .themes-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .demo-container {
+        padding: 10px;
+      }
+    }
+
+    .usage-guide {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      margin-top: 40px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    .usage-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1f2937;
+      margin-bottom: 16px;
+    }
+
+    .code-block {
+      background: #1f2937;
+      color: #f9fafb;
+      padding: 20px;
+      border-radius: 8px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 14px;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+
+    .variable-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .variable-item {
+      padding: 12px;
+      background: #f9fafb;
+      border-radius: 6px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+    }
+
+    .variable-name {
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .variable-default {
+      color: #6b7280;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <div class="demo-header">
+      <h1 class="demo-title">🎨 Themeable Widget Demo</h1>
+      <p class="demo-subtitle">Explore different themes for the TrustRails widget</p>
+    </div>
+
+    <div class="themes-grid">
+      <!-- Default Theme -->
+      <div class="theme-demo">
+        <h2 class="theme-title">
+          Default Theme
+          <span class="theme-badge default">Blue</span>
+        </h2>
+        <trustrails-widget
+          class="widget-default"
+          partner-id="ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8"
+          api-key="tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R"
+          environment="sandbox"
+          auth-endpoint="http://localhost:3002/api/widget/auth"
+          api-endpoint="http://localhost:8082">
+        </trustrails-widget>
+      </div>
+
+      <!-- Corporate Theme -->
+      <div class="theme-demo">
+        <h2 class="theme-title">
+          Corporate Theme
+          <span class="theme-badge branded">Bank/Financial</span>
+        </h2>
+        <trustrails-widget
+          class="widget-corporate"
+          partner-id="ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8"
+          api-key="tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R"
+          environment="sandbox"
+          auth-endpoint="http://localhost:3002/api/widget/auth"
+          api-endpoint="http://localhost:8082">
+        </trustrails-widget>
+      </div>
+
+      <!-- Dark Theme -->
+      <div class="theme-demo">
+        <h2 class="theme-title">
+          Dark Theme
+          <span class="theme-badge dark">Night Mode</span>
+        </h2>
+        <trustrails-widget
+          class="widget-dark"
+          partner-id="ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8"
+          api-key="tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R"
+          environment="sandbox"
+          auth-endpoint="http://localhost:3002/api/widget/auth"
+          api-endpoint="http://localhost:8082">
+        </trustrails-widget>
+      </div>
+
+      <!-- Minimal Theme -->
+      <div class="theme-demo">
+        <h2 class="theme-title">
+          Minimal Theme
+          <span class="theme-badge minimal">Clean</span>
+        </h2>
+        <trustrails-widget
+          class="widget-minimal"
+          partner-id="ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8"
+          api-key="tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R"
+          environment="sandbox"
+          auth-endpoint="http://localhost:3002/api/widget/auth"
+          api-endpoint="http://localhost:8082">
+        </trustrails-widget>
+      </div>
+    </div>
+
+    <!-- Usage Guide -->
+    <div class="usage-guide">
+      <h2 class="usage-title">🛠️ Customization Guide</h2>
+      <p>The widget is fully themeable using CSS variables. Apply these variables to your widget container or globally:</p>
+
+      <div class="code-block">
+/* Example: Corporate Green Theme */
+.trustrails-widget {
+  --trustrails-primary-color: #059669;
+  --trustrails-primary-hover: #047857;
+  --trustrails-primary-bg: #ecfdf5;
+  --trustrails-font-family: 'Your Brand Font', sans-serif;
+  --trustrails-border-radius: 4px;
+}
+      </div>
+
+      <h3 style="margin: 24px 0 16px 0; font-size: 18px; color: #1f2937;">Available CSS Variables</h3>
+
+      <div class="variable-list">
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-primary-color</div>
+          <div class="variable-default">Default: #3b82f6</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-primary-hover</div>
+          <div class="variable-default">Default: #2563eb</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-background</div>
+          <div class="variable-default">Default: #ffffff</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-text-color</div>
+          <div class="variable-default">Default: #1f2937</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-font-family</div>
+          <div class="variable-default">Default: system fonts</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-border-radius</div>
+          <div class="variable-default">Default: 12px</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-border-color</div>
+          <div class="variable-default">Default: #e5e7eb</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-card-bg</div>
+          <div class="variable-default">Default: #ffffff</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-header-bg</div>
+          <div class="variable-default">Default: gradient</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-shadow</div>
+          <div class="variable-default">Default: box-shadow</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-max-width</div>
+          <div class="variable-default">Default: 600px</div>
+        </div>
+        <div class="variable-item">
+          <div class="variable-name">--trustrails-min-height</div>
+          <div class="variable-default">Default: 400px</div>
+        </div>
+      </div>
+
+      <div class="code-block">
+&lt;!-- Example Implementation --&gt;
+&lt;trustrails-widget
+  class="my-custom-theme"
+  partner-id="your-partner-id"
+  api-key="your-api-key"
+  environment="production"&gt;
+&lt;/trustrails-widget&gt;
+
+&lt;style&gt;
+.my-custom-theme {
+  --trustrails-primary-color: #your-brand-color;
+  --trustrails-font-family: 'Your Brand Font', sans-serif;
+  --trustrails-border-radius: 8px;
+}
+&lt;/style&gt;
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import the widget module
+    import '@trustrails/rollover-widget';
+
+    // Add event listeners to demonstrate functionality
+    document.addEventListener('trustrails-plan-selected', (event) => {
+      console.log('Plan selected:', event.detail);
+    });
+
+    document.addEventListener('trustrails-start', (event) => {
+      console.log('Rollover process started:', event.detail);
+    });
+
+    document.addEventListener('trustrails-search', (event) => {
+      console.log('Search performed:', event.detail);
+    });
+  </script>
+</body>
+</html>
