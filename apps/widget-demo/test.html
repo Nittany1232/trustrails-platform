@@ -275,7 +275,11 @@
   <div class="container">
     <header>
       <h1>🧪 Widget Auth & Search Test</h1>
-      <p class="subtitle">Test authentication with microservice and search functionality</p>
+      <p class="subtitle">Test authentication with microservice and enhanced sponsor-custodian search functionality</p>
+      <div style="margin-top: 15px; padding: 10px; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+        <p style="font-size: 12px; color: #1e40af; margin: 0; font-weight: 500;">🎯 NEW: Sponsor-to-Custodian Mapping</p>
+        <p style="font-size: 11px; color: #1e40af; margin: 4px 0 0 0;">Test the "Microsoft 1990" employee search scenario - find employers and their 401k custodians</p>
+      </div>
     </header>
 
     <div class="main-content">
@@ -384,6 +388,42 @@
               <button class="btn btn-secondary custodian-search" data-query="Schwab">
                 🏢 Schwab
               </button>
+            </div>
+
+            <!-- NEW: Sponsor Search Section -->
+            <div style="margin-top: 20px; padding: 15px; background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px;">
+              <label style="font-size: 12px; font-weight: 600; color: #1e40af; margin-bottom: 8px; display: block;">
+                🎯 NEW: Sponsor-to-Custodian Mapping Tests
+              </label>
+              <p style="font-size: 11px; color: #1e40af; margin-bottom: 10px; line-height: 1.4;">
+                Test the "Microsoft 1990" employee search scenario - find employers and their 401k custodians
+              </p>
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px;">
+                <button class="btn btn-secondary sponsor-search" data-query="Microsoft">
+                  🏢 Microsoft
+                </button>
+                <button class="btn btn-secondary sponsor-search" data-query="Google">
+                  🏢 Google
+                </button>
+                <button class="btn btn-secondary sponsor-search" data-query="Amazon">
+                  🏢 Amazon
+                </button>
+                <button class="btn btn-secondary sponsor-search" data-query="Apple">
+                  🏢 Apple
+                </button>
+                <button class="btn btn-secondary sponsor-search" data-query="Meta">
+                  🏢 Meta
+                </button>
+                <button class="btn btn-secondary sponsor-search" data-query="Tesla">
+                  🏢 Tesla
+                </button>
+              </div>
+              <div style="margin-top: 10px;">
+                <label style="font-size: 11px; color: #6b7280;">Historical Test (if data available):</label>
+                <button class="btn btn-secondary sponsor-search" data-query="Microsoft Corporation" style="margin-top: 5px; width: 100%; font-size: 11px;">
+                  🎯 "Microsoft 1990" Employee Scenario
+                </button>
+              </div>
             </div>
           </div>
 
@@ -663,6 +703,92 @@
       }
     }
 
+    // NEW: Enhanced sponsor search test function
+    async function testSponsorSearch(sponsorQuery) {
+      logEvent('SPONSOR', `🎯 Testing sponsor-to-custodian mapping for: "${sponsorQuery}"`);
+      logEvent('SPONSOR', 'This tests the "Microsoft 1990" employee search scenario', 'info');
+
+      try {
+        // First authenticate
+        const authData = await testAuthentication();
+
+        // Search with sponsor query
+        const searchUrl = new URL(CONFIG.searchEndpoint);
+        searchUrl.searchParams.append('q', sponsorQuery);
+        searchUrl.searchParams.append('limit', '10');
+        searchUrl.searchParams.append('force_bigquery', 'true'); // Force BigQuery for sponsor data
+
+        logEvent('SPONSOR', 'Forcing BigQuery to access full sponsor-custodian dataset');
+
+        const response = await fetch(searchUrl.toString(), {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${authData.bearer_token}`
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          const resultCount = data.results?.length || 0;
+          logEvent('SPONSOR', `Found ${resultCount} sponsor results`, resultCount > 0 ? 'success' : 'warning');
+
+          if (data.results && data.results.length > 0) {
+            // Analyze results for sponsor-custodian mapping
+            let sponsorFound = false;
+            let custodianMapped = false;
+
+            data.results.forEach((result, index) => {
+              if (index < 3) { // Show first 3 results
+                const company = result.company?.name || result.sponsorName || 'Unknown';
+                const custodian = result.primaryContact?.name || 'Not mapped';
+                const confidence = result.contactConfidence || 'unknown';
+                const participants = result.planDetails?.participants || 'N/A';
+                const assets = result.planDetails?.assetFormatted || 'N/A';
+                const dataQuality = result.metadata?.dataQuality || 'unknown';
+
+                logEvent('SPONSOR', `${index + 1}. ${company}`, 'success');
+                logEvent('SPONSOR', `   Plan: ${result.planName}`);
+                logEvent('SPONSOR', `   Custodian: ${custodian} (${confidence} confidence)`);
+                logEvent('SPONSOR', `   Participants: ${participants}, Assets: ${assets}`);
+                logEvent('SPONSOR', `   Data Quality: ${dataQuality}`);
+
+                if (company.toLowerCase().includes(sponsorQuery.toLowerCase())) {
+                  sponsorFound = true;
+                }
+                if (custodian !== 'Not mapped' && custodian !== 'unknown') {
+                  custodianMapped = true;
+                }
+              }
+            });
+
+            // Summary of sponsor-custodian mapping test
+            logEvent('SPONSOR', '--- SPONSOR-CUSTODIAN MAPPING TEST RESULTS ---', 'info');
+            logEvent('SPONSOR', `✅ Sponsor found: ${sponsorFound ? 'YES' : 'NO'}`, sponsorFound ? 'success' : 'warning');
+            logEvent('SPONSOR', `✅ Custodian mapped: ${custodianMapped ? 'YES' : 'NO'}`, custodianMapped ? 'success' : 'warning');
+            logEvent('SPONSOR', `✅ Search method: ${data.metadata?.searchMethod || 'unknown'}`);
+            logEvent('SPONSOR', `✅ Processing time: ${data.metadata?.processingTime || 'unknown'}`);
+
+            if (sponsorFound && custodianMapped) {
+              logEvent('SPONSOR', '🎉 SUCCESS: "Microsoft 1990" scenario working!', 'success');
+            } else if (sponsorFound && !custodianMapped) {
+              logEvent('SPONSOR', '⚠️ PARTIAL: Found sponsor but no custodian mapping', 'warning');
+            } else {
+              logEvent('SPONSOR', '❌ FAILED: May need historical data (2020-2023)', 'error');
+            }
+
+          } else {
+            logEvent('SPONSOR', '❌ No sponsor results found', 'error');
+            logEvent('SPONSOR', 'This may indicate need for historical DOL data', 'warning');
+          }
+        } else {
+          throw new Error(data.error || 'Sponsor search failed');
+        }
+      } catch (error) {
+        logEvent('SPONSOR', `Test failed: ${error.message}`, 'error');
+      }
+    }
+
     // Widget event listeners
     document.addEventListener('trustrails-ready', (event) => {
       logEvent('WIDGET', 'Widget ready', 'success');
@@ -715,6 +841,16 @@
         elements.testSearchInput.value = query;
         logEvent('CUSTODIAN', `Quick search for: ${query}`);
         testSearch(query);
+      });
+    });
+
+    // NEW: Sponsor search buttons
+    document.querySelectorAll('.sponsor-search').forEach(button => {
+      button.addEventListener('click', (e) => {
+        const query = e.target.getAttribute('data-query');
+        elements.testSearchInput.value = query;
+        logEvent('SPONSOR', `Testing sponsor search: ${query}`);
+        testSponsorSearch(query);
       });
     });
 

@@ -260,8 +260,8 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
   let whereConditions: string[] = [];
   const queryParams: any[] = [];
 
-  // Always exclude plans with zero participants (assets data not available)
-  whereConditions.push('ps.participants > 0');
+  // Include plans with participants data OR extracted sponsors (some may not have participant counts)
+  whereConditions.push('(ps.participants > 0 OR ps.extracted_from_plan_name = TRUE)');
 
   if (ein) {
     whereConditions.push('CAST(ps.ein_plan_sponsor AS STRING) = ?');
@@ -284,19 +284,34 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
   }
 
   if (q && q.length > 2) {
-    // Fuzzy search on multiple fields - support partial matches
+    // Enhanced sponsor-first search with fuzzy matching
     const searchTerm = q.trim();
 
-    // Create variations for fuzzy matching
+    // Multi-pattern search prioritizing sponsor matches
     whereConditions.push(`(
+      -- Direct sponsor name matches (highest priority)
+      UPPER(ps.sponsor_name) LIKE UPPER(?) OR
+      -- Plan name matches (secondary)
       UPPER(ps.plan_name) LIKE UPPER(?) OR
-      UPPER(ps.sponsor_name) LIKE UPPER(?)
+      -- Search tokens for fast partial matching
+      EXISTS (
+        SELECT 1 FROM UNNEST(ps.search_tokens) as token
+        WHERE UPPER(token) LIKE UPPER(?)
+      ) OR
+      -- Custodian name matches (for custodian-first searches)
+      EXISTS (
+        SELECT 1 FROM \`trustrails-faa3e.dol_data.schedule_c_custodians\` cc
+        WHERE cc.ack_id = ps.ack_id
+          AND UPPER(cc.provider_other_name) LIKE UPPER(?)
+      )
     )`);
 
-    // Add different search patterns for fuzzy matching
+    // Add search patterns with different matching strategies
     queryParams.push(
-      `%${searchTerm}%`,  // Contains anywhere in plan name
-      `%${searchTerm}%`   // Contains anywhere in sponsor name
+      `%${searchTerm}%`,  // Sponsor name contains
+      `%${searchTerm}%`,  // Plan name contains
+      `%${searchTerm}%`,  // Search tokens contain
+      `%${searchTerm}%`   // Custodian name contains
     );
   }
 
@@ -309,7 +324,7 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
     ${whereClause}
   `;
 
-  // Data query using our unified dataset with JOINs
+  // Enhanced data query with sponsor-custodian intelligence
   const dataQuery = `
     WITH priority_providers AS (
       SELECT
@@ -346,39 +361,73 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
     ),
     primary_contacts AS (
       SELECT * FROM priority_providers WHERE provider_rank = 1
+    ),
+    search_ranking AS (
+      SELECT
+        ps.*,
+        pc.provider_name as primaryContactName,
+        CAST(pc.provider_ein AS STRING) as primaryContactEin,
+        pc.relation as primaryContactRelation,
+        pc.priority_rank as contactConfidence,
+        CASE
+          WHEN pc.provider_name IS NOT NULL THEN 'schedule_c'
+          ELSE 'none'
+        END as contactSource,
+        -- Enhanced search ranking based on match quality
+        CASE
+          WHEN ? IS NOT NULL AND UPPER(ps.sponsor_name) LIKE UPPER(?) THEN 1  -- Direct sponsor match
+          WHEN ? IS NOT NULL AND UPPER(ps.plan_name) LIKE UPPER(?) THEN 2     -- Plan name match
+          WHEN pc.provider_name IS NOT NULL THEN 3                            -- Has custodian mapping
+          ELSE 4                                                              -- Other matches
+        END as search_priority,
+        -- Confidence scoring
+        CASE
+          WHEN ps.extracted_from_plan_name = FALSE AND ps.participants > 0 THEN ps.confidence_score
+          WHEN ps.extracted_from_plan_name = TRUE THEN ps.confidence_score * 0.8
+          ELSE 0.5
+        END as result_confidence
+      FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
+      LEFT JOIN primary_contacts pc ON ps.ack_id = pc.ack_id
+      ${whereClause}
     )
     SELECT
-      ps.ein_plan_sponsor as ein,
-      ps.plan_number as planNumber,
-      ps.plan_name as planName,
-      ps.sponsor_name as sponsorName,
-      ps.sponsor_city as sponsorCity,
-      ps.sponsor_state as sponsorState,
-      ps.sponsor_zip as sponsorZip,
-      ps.plan_type as planType,
-      ps.participants,
-      ps.total_assets as totalAssets,
-      ps.form_tax_year as formYear,
-      1 as searchRank,
-      ps.ack_id as ACK_ID,
-      -- Primary contact from Schedule C (priority-based)
-      pc.provider_name as primaryContactName,
-      CAST(pc.provider_ein AS STRING) as primaryContactEin,
-      pc.relation as primaryContactRelation,
-      pc.priority_rank as contactConfidence,
-      -- Contact determination logic
-      CASE
-        WHEN pc.provider_name IS NOT NULL THEN 'schedule_c'
-        ELSE 'none'
-      END as contactSource
-    FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
-    LEFT JOIN primary_contacts pc ON ps.ack_id = pc.ack_id
-    ${whereClause}
-    ORDER BY ps.participants DESC, ps.total_assets DESC
+      ein_plan_sponsor as ein,
+      plan_number as planNumber,
+      plan_name as planName,
+      sponsor_name as sponsorName,
+      sponsor_city as sponsorCity,
+      sponsor_state as sponsorState,
+      sponsor_zip as sponsorZip,
+      plan_type as planType,
+      participants,
+      total_assets as totalAssets,
+      form_tax_year as formYear,
+      search_priority as searchRank,
+      ack_id as ACK_ID,
+      primaryContactName,
+      primaryContactEin,
+      primaryContactRelation,
+      contactConfidence,
+      contactSource,
+      result_confidence,
+      extracted_from_plan_name,
+      file_source
+    FROM search_ranking
+    ORDER BY
+      search_priority ASC,
+      result_confidence DESC,
+      COALESCE(participants, 0) DESC,
+      COALESCE(total_assets, 0) DESC
     LIMIT ? OFFSET ?
   `;
 
-  queryParams.push(limit, offset);
+  // Add search term parameters for ranking (if query exists)
+  const searchTermForRanking = q || null;
+  queryParams.push(
+    searchTermForRanking, searchTermForRanking ? `%${searchTermForRanking}%` : null,
+    searchTermForRanking, searchTermForRanking ? `%${searchTermForRanking}%` : null,
+    limit, offset
+  );
 
   // Execute queries
   const [[countResult]] = await bigquery.query({
@@ -403,10 +452,18 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
  * Format plan result for API response
  */
 function formatPlanResult(plan: any) {
-  // Determine primary contact with confidence level
+  // Enhanced primary contact determination with sponsor-custodian intelligence
   let primaryContact = null;
   let contactConfidence = 'low';
   let contactGuidance = '';
+  let dataQuality = 'standard';
+
+  // Set data quality indicator
+  if (plan.extracted_from_plan_name) {
+    dataQuality = 'extracted';
+  } else if (plan.file_source === 'migrated_from_retirement_plans') {
+    dataQuality = 'verified';
+  }
 
   if (plan.primaryContactName) {
     // Have Schedule C data with priority-based selection
@@ -417,7 +474,7 @@ function formatPlanResult(plan: any) {
       source: 'schedule_c'
     };
 
-    // Set confidence based on priority rank
+    // Enhanced confidence based on priority rank and data quality
     if (plan.contactConfidence === 1) {
       contactConfidence = 'high';
       contactGuidance = 'This is your plan recordkeeper - contact them for account access and rollovers';
@@ -427,6 +484,11 @@ function formatPlanResult(plan: any) {
     } else {
       contactConfidence = 'low';
       contactGuidance = 'This provider works with your plan. Ask them to connect you with the recordkeeper.';
+    }
+
+    // Adjust confidence based on data quality
+    if (plan.result_confidence < 0.8) {
+      contactConfidence = contactConfidence === 'high' ? 'medium' : 'low';
     }
   } else if (plan.adminName) {
     // Fallback to Form 5500 administrator
@@ -438,6 +500,9 @@ function formatPlanResult(plan: any) {
     };
     contactConfidence = 'medium';
     contactGuidance = 'This is the plan administrator. They are legally required to assist with your request.';
+  } else {
+    // No contact found - provide guidance
+    contactGuidance = 'Contact your employer\'s HR department for plan information and rollover assistance.';
   }
 
   return {
@@ -462,7 +527,11 @@ function formatPlanResult(plan: any) {
     metadata: {
       lastUpdated: plan.lastUpdated || plan.formYear,
       searchRank: plan.searchRank,
-      ackId: plan.ACK_ID
+      ackId: plan.ACK_ID,
+      dataQuality: dataQuality,
+      resultConfidence: plan.result_confidence || 1.0,
+      extractedFromPlanName: plan.extracted_from_plan_name || false,
+      fileSource: plan.file_source || 'unknown'
     }
   };
 }
