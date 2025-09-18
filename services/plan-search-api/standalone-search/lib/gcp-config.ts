@@ -23,7 +23,7 @@ export const adminDb = firestore;
  */
 export const GCP_CONFIG = {
   projectId: 'trustrails-faa3e',
-  region: 'us-central1',
+  region: 'US',  // Changed from us-central1 to US (multi-region) for dol_data dataset
 
   // BigQuery configuration
   bigquery: {

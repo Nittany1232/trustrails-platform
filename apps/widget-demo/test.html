@@ -305,7 +305,7 @@
           </div>
           <div class="config-item">
             <span class="config-label">Auth Service:</span>
-            <span class="config-value">localhost:3003</span>
+            <span class="config-value">localhost:3002</span>
           </div>
           <div class="config-item">
             <span class="config-label">Search API:</span>
@@ -348,15 +348,43 @@
               type="text"
               id="test-search-input"
               class="test-input"
-              placeholder="e.g., John Smith, 401k, retirement"
-              value="John Smith"
+              placeholder="e.g., John Smith, 401k, Fidelity, Empower"
+              value="Fidelity"
             >
+            <div style="margin: 10px 0;">
+              <label style="font-size: 13px;">
+                <input type="checkbox" id="force-bigquery" style="margin-right: 5px;">
+                Force BigQuery (bypass cache)
+              </label>
+            </div>
             <button class="btn btn-primary" id="test-search">
               🔍 Test Search
             </button>
             <button class="btn btn-secondary" id="test-auth">
               🔐 Test Auth Only
             </button>
+
+            <!-- Quick Custodian Search Buttons -->
+            <div style="margin-top: 15px;">
+              <label style="font-size: 12px; font-weight: 500; color: #6b7280; margin-bottom: 8px; display: block;">
+                Quick Custodian Searches:
+              </label>
+              <button class="btn btn-secondary custodian-search" data-query="Fidelity">
+                🏢 Fidelity
+              </button>
+              <button class="btn btn-secondary custodian-search" data-query="Empower">
+                🏢 Empower
+              </button>
+              <button class="btn btn-secondary custodian-search" data-query="Principal">
+                🏢 Principal
+              </button>
+              <button class="btn btn-secondary custodian-search" data-query="Vanguard">
+                🏢 Vanguard
+              </button>
+              <button class="btn btn-secondary custodian-search" data-query="Schwab">
+                🏢 Schwab
+              </button>
+            </div>
           </div>
 
           <button class="btn btn-primary" id="reload-widget">
@@ -394,8 +422,8 @@
             partner-id="ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8"
             api-key="tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R"
             environment="sandbox"
-            auth-endpoint="http://localhost:3003/api/widget/auth"
-            api-endpoint="https://searchplans-pixdjghfcq-uc.a.run.app"
+            auth-endpoint="http://localhost:3002/api/widget/auth"
+            api-endpoint="http://localhost:8082"
             debug="true">
           </trustrails-widget>
         </div>
@@ -411,8 +439,8 @@
     const CONFIG = {
       partnerId: 'ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8',
       apiKey: 'tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R',
-      authEndpoint: 'http://localhost:3003/api/widget/auth',
-      searchEndpoint: 'https://searchplans-pixdjghfcq-uc.a.run.app',
+      authEndpoint: 'http://localhost:3002/api/widget/auth',
+      searchEndpoint: 'http://localhost:8082', // Using local API with BigQuery access
       environment: 'sandbox'
     };
 
@@ -578,7 +606,7 @@
       }
     }
 
-    async function testSearch() {
+    async function testSearch(searchQuery = null) {
       logEvent('TEST', 'Starting search test...');
 
       try {
@@ -586,19 +614,26 @@
         const authData = await testAuthentication();
 
         // Then search
-        const query = elements.testSearchInput.value || 'John Smith';
+        const query = searchQuery || elements.testSearchInput.value || 'Fidelity';
         logEvent('SEARCH', `Searching for: "${query}"`);
 
-        const response = await fetch(`${CONFIG.searchEndpoint}/search`, {
-          method: 'POST',
+        // Use GET request with query parameters for search endpoint
+        const searchUrl = new URL(CONFIG.searchEndpoint);
+        searchUrl.searchParams.append('q', query);
+        searchUrl.searchParams.append('limit', '10');
+
+        // Check if force BigQuery is enabled
+        const forceBigQuery = document.getElementById('force-bigquery').checked;
+        if (forceBigQuery) {
+          searchUrl.searchParams.append('force_bigquery', 'true');
+          logEvent('SEARCH', 'Using BigQuery (bypassing cache)');
+        }
+
+        const response = await fetch(searchUrl.toString(), {
+          method: 'GET',
           headers: {
-            'Content-Type': 'application/json',
             'Authorization': `Bearer ${authData.bearer_token}`
-          },
-          body: JSON.stringify({
-            q: query,  // Changed from 'query' to 'q'
-            limit: 10
-          })
+          }
         });
 
         const data = await response.json();
@@ -607,9 +642,17 @@
           logEvent('SEARCH', `Found ${data.results?.length || data.count || 0} results`, 'success');
           if (data.results && data.results.length > 0) {
             const firstResult = data.results[0];
-            logEvent('SEARCH', `First result: ${firstResult.plan_name || firstResult.name || 'Unknown'}`, 'success');
-            if (firstResult.ein) {
-              logEvent('SEARCH', `EIN: ${firstResult.ein}`, 'success');
+
+            // Check if it's a custodian result
+            if (firstResult.planType === 'Custodian Services' || firstResult.isCustodian) {
+              logEvent('CUSTODIAN', `Found: ${firstResult.planName || firstResult.sponsorName}`, 'success');
+              logEvent('CUSTODIAN', `Market Share: ${firstResult.marketShare || 'N/A'}%`, 'success');
+              logEvent('CUSTODIAN', `Plans Serviced: ${firstResult.participants || 'N/A'}`, 'success');
+            } else {
+              logEvent('SEARCH', `First result: ${firstResult.planName || firstResult.plan_name || firstResult.name || 'Unknown'}`, 'success');
+              if (firstResult.ein) {
+                logEvent('SEARCH', `EIN: ${firstResult.ein}`, 'success');
+              }
             }
           }
         } else {
@@ -659,10 +702,20 @@
 
     // Button event handlers
     elements.testAuthBtn.addEventListener('click', testAuthentication);
-    elements.testSearchBtn.addEventListener('click', testSearch);
+    elements.testSearchBtn.addEventListener('click', () => testSearch());
     elements.reloadBtn.addEventListener('click', reloadWidget);
     elements.clearLogsBtn.addEventListener('click', () => {
       elements.eventLog.innerHTML = '<div class="event-entry"><span class="event-time">--:--:--</span><span class="event-type">CLEARED</span><span class="event-detail">Log cleared</span></div>';
+    });
+
+    // Custodian search buttons
+    document.querySelectorAll('.custodian-search').forEach(button => {
+      button.addEventListener('click', (e) => {
+        const query = e.target.getAttribute('data-query');
+        elements.testSearchInput.value = query;
+        logEvent('CUSTODIAN', `Quick search for: ${query}`);
+        testSearch(query);
+      });
     });
 
     // Initialize

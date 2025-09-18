@@ -7,9 +7,12 @@ import { HttpFunction } from '@google-cloud/functions-framework';
 import { requireAdminApp, GCP_CONFIG, getGCPClientConfig } from './lib/gcp-config';
 import { BigQuery } from '@google-cloud/bigquery';
 
-// Initialize services
+// Initialize services with explicit project ID and keyFilename
 const { adminDb } = requireAdminApp();
-const bigquery = new BigQuery(getGCPClientConfig());
+const bigquery = new BigQuery({
+  projectId: 'trustrails-faa3e',
+  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS || '/home/stock1232/projects/trustrails/credentials/firebase-admin.json'
+});
 
 // Cache for frequent searches (in-memory for Cloud Functions)
 const searchCache = new Map<string, { data: any; timestamp: number }>();
@@ -42,7 +45,8 @@ export const searchPlans: HttpFunction = async (req, res) => {
       city,     // City name
       type,     // Plan type (401k, 403b, etc)
       limit = '20',
-      offset = '0'
+      offset = '0',
+      force_bigquery = 'false'  // Force BigQuery instead of Firestore cache
     } = req.query as Record<string, string>;
 
     // Validate inputs
@@ -69,15 +73,29 @@ export const searchPlans: HttpFunction = async (req, res) => {
     let results: any[] = [];
     let totalCount = 0;
     let searchMethod = '';
+    const forceBigQuery = force_bigquery === 'true';
 
-    // Try Firestore first for common searches (fastest)
-    if ((q || ein) && searchLimit <= 20) {
+    // Choose search method based on force_bigquery flag
+    if (forceBigQuery) {
+      // Force BigQuery search (for testing)
+      searchMethod = 'bigquery';
+      const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
+      results = bigQueryResults.results;
+      totalCount = bigQueryResults.totalCount;
+    } else if ((q || ein) && searchLimit <= 20) {
+      // Try Firestore first for common searches (fastest)
       searchMethod = 'firestore';
       results = await searchFirestore({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
-    }
 
-    // Fall back to BigQuery for complex or large queries
-    if (results.length === 0) {
+      // Fall back to BigQuery if no results from Firestore
+      if (results.length === 0) {
+        searchMethod = 'bigquery';
+        const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
+        results = bigQueryResults.results;
+        totalCount = bigQueryResults.totalCount;
+      }
+    } else {
+      // Use BigQuery for complex or large queries
       searchMethod = 'bigquery';
       const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
       results = bigQueryResults.results;
@@ -243,25 +261,25 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
   const queryParams: any[] = [];
 
   // Always exclude plans with zero participants (assets data not available)
-  whereConditions.push('participants > 0');
+  whereConditions.push('ps.participants > 0');
 
   if (ein) {
-    whereConditions.push('ein = ?');
+    whereConditions.push('CAST(ps.ein_plan_sponsor AS STRING) = ?');
     queryParams.push(ein);
   }
 
   if (state) {
-    whereConditions.push('UPPER(sponsorState) = UPPER(?)');
+    whereConditions.push('UPPER(ps.sponsor_state) = UPPER(?)');
     queryParams.push(state);
   }
 
   if (city) {
-    whereConditions.push('UPPER(sponsorCity) LIKE UPPER(?)');
+    whereConditions.push('UPPER(ps.sponsor_city) LIKE UPPER(?)');
     queryParams.push(`%${city}%`);
   }
 
   if (type) {
-    whereConditions.push('planType = ?');
+    whereConditions.push('ps.plan_type = ?');
     queryParams.push(mapPlanTypeQuery(type));
   }
 
@@ -271,52 +289,92 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
 
     // Create variations for fuzzy matching
     whereConditions.push(`(
-      UPPER(planName) LIKE UPPER(?) OR
-      UPPER(sponsorName) LIKE UPPER(?) OR
-      UPPER(sponsorName) LIKE UPPER(?) OR
-      UPPER(planName) LIKE UPPER(?) OR
-      ein = ? OR
-      ein LIKE ?
+      UPPER(ps.plan_name) LIKE UPPER(?) OR
+      UPPER(ps.sponsor_name) LIKE UPPER(?)
     )`);
 
     // Add different search patterns for fuzzy matching
     queryParams.push(
-      `%${searchTerm}%`,  // Contains anywhere
-      `%${searchTerm}%`,  // Contains anywhere in sponsor
-      `${searchTerm}%`,   // Starts with (for fuzzy prefix match)
-      `${searchTerm}%`,   // Starts with in plan name
-      searchTerm,         // Exact EIN match
-      `${searchTerm}%`    // EIN prefix match
+      `%${searchTerm}%`,  // Contains anywhere in plan name
+      `%${searchTerm}%`   // Contains anywhere in sponsor name
     );
   }
 
   const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
 
-  // Count query
+  // Count query using unified dataset
   const countQuery = `
     SELECT COUNT(*) as total
-    FROM \`${GCP_CONFIG.bigquery.datasets.retirement_plans}.form5500_latest\`
+    FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
     ${whereClause}
   `;
 
-  // Data query
+  // Data query using our unified dataset with JOINs
   const dataQuery = `
+    WITH priority_providers AS (
+      SELECT
+        cc.ack_id,
+        cc.provider_other_name as provider_name,
+        CAST(cc.provider_other_ein AS STRING) as provider_ein,
+        cc.provider_other_relation as relation,
+        -- Priority ranking based on provider type
+        CASE
+          WHEN UPPER(cc.provider_other_relation) LIKE '%RECORDKEEP%' THEN 1
+          WHEN UPPER(cc.provider_other_relation) LIKE '%RECORD KEEP%' THEN 1
+          WHEN UPPER(cc.provider_other_relation) IN ('ADMIN', 'ADMINISTRATOR') THEN 2
+          WHEN UPPER(cc.provider_other_relation) IN ('TRUSTEE', 'CUSTODIAN') THEN 3
+          WHEN UPPER(cc.provider_other_relation) LIKE '%INVESTMENT%' THEN 4
+          WHEN UPPER(cc.provider_other_relation) = 'CONTRACT ADMINISTRATOR' THEN 5
+          ELSE 6
+        END as priority_rank,
+        -- Row number to get top provider per plan
+        ROW_NUMBER() OVER (
+          PARTITION BY cc.ack_id
+          ORDER BY
+            CASE
+              WHEN UPPER(cc.provider_other_relation) LIKE '%RECORDKEEP%' THEN 1
+              WHEN UPPER(cc.provider_other_relation) LIKE '%RECORD KEEP%' THEN 1
+              WHEN UPPER(cc.provider_other_relation) IN ('ADMIN', 'ADMINISTRATOR') THEN 2
+              WHEN UPPER(cc.provider_other_relation) IN ('TRUSTEE', 'CUSTODIAN') THEN 3
+              WHEN UPPER(cc.provider_other_relation) LIKE '%INVESTMENT%' THEN 4
+              WHEN UPPER(cc.provider_other_relation) = 'CONTRACT ADMINISTRATOR' THEN 5
+              ELSE 6
+            END
+        ) as provider_rank
+      FROM \`trustrails-faa3e.dol_data.schedule_c_custodians\` cc
+      WHERE cc.provider_other_relation IS NOT NULL
+    ),
+    primary_contacts AS (
+      SELECT * FROM priority_providers WHERE provider_rank = 1
+    )
     SELECT
-      ein,
-      planNumber,
-      planName,
-      sponsorName,
-      sponsorCity,
-      sponsorState,
-      sponsorZip,
-      planType,
-      participants,
-      totalAssets,
-      formYear,
-      searchRank
-    FROM \`${GCP_CONFIG.bigquery.datasets.retirement_plans}.form5500_latest\`
+      ps.ein_plan_sponsor as ein,
+      ps.plan_number as planNumber,
+      ps.plan_name as planName,
+      ps.sponsor_name as sponsorName,
+      ps.sponsor_city as sponsorCity,
+      ps.sponsor_state as sponsorState,
+      ps.sponsor_zip as sponsorZip,
+      ps.plan_type as planType,
+      ps.participants,
+      ps.total_assets as totalAssets,
+      ps.form_tax_year as formYear,
+      1 as searchRank,
+      ps.ack_id as ACK_ID,
+      -- Primary contact from Schedule C (priority-based)
+      pc.provider_name as primaryContactName,
+      CAST(pc.provider_ein AS STRING) as primaryContactEin,
+      pc.relation as primaryContactRelation,
+      pc.priority_rank as contactConfidence,
+      -- Contact determination logic
+      CASE
+        WHEN pc.provider_name IS NOT NULL THEN 'schedule_c'
+        ELSE 'none'
+      END as contactSource
+    FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
+    LEFT JOIN primary_contacts pc ON ps.ack_id = pc.ack_id
     ${whereClause}
-    ORDER BY searchRank DESC, totalAssets DESC
+    ORDER BY ps.participants DESC, ps.total_assets DESC
     LIMIT ? OFFSET ?
   `;
 
@@ -345,6 +403,43 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
  * Format plan result for API response
  */
 function formatPlanResult(plan: any) {
+  // Determine primary contact with confidence level
+  let primaryContact = null;
+  let contactConfidence = 'low';
+  let contactGuidance = '';
+
+  if (plan.primaryContactName) {
+    // Have Schedule C data with priority-based selection
+    primaryContact = {
+      name: plan.primaryContactName,
+      ein: plan.primaryContactEin,
+      relation: plan.primaryContactRelation,
+      source: 'schedule_c'
+    };
+
+    // Set confidence based on priority rank
+    if (plan.contactConfidence === 1) {
+      contactConfidence = 'high';
+      contactGuidance = 'This is your plan recordkeeper - contact them for account access and rollovers';
+    } else if (plan.contactConfidence <= 3) {
+      contactConfidence = 'medium';
+      contactGuidance = 'Contact this provider for plan information. Ask for the recordkeeper if needed.';
+    } else {
+      contactConfidence = 'low';
+      contactGuidance = 'This provider works with your plan. Ask them to connect you with the recordkeeper.';
+    }
+  } else if (plan.adminName) {
+    // Fallback to Form 5500 administrator
+    primaryContact = {
+      name: plan.adminName,
+      ein: plan.adminEin,
+      relation: 'PLAN ADMINISTRATOR',
+      source: 'form_5500'
+    };
+    contactConfidence = 'medium';
+    contactGuidance = 'This is the plan administrator. They are legally required to assist with your request.';
+  }
+
   return {
     ein: plan.ein,
     planNumber: plan.planNumber,
@@ -361,9 +456,13 @@ function formatPlanResult(plan: any) {
       assets: plan.totalAssets,
       assetFormatted: formatCurrency(plan.totalAssets)
     },
+    primaryContact: primaryContact,
+    contactConfidence: contactConfidence,
+    contactGuidance: contactGuidance,
     metadata: {
       lastUpdated: plan.lastUpdated || plan.formYear,
-      searchRank: plan.searchRank
+      searchRank: plan.searchRank,
+      ackId: plan.ACK_ID
     }
   };
 }

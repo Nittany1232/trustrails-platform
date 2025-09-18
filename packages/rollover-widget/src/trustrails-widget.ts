@@ -484,6 +484,54 @@ export class TrustRailsWidget extends LitElement {
       gap: 4px;
     }
 
+    .result-item .primary-contact {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .result-item .contact-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .result-item .contact-name {
+      font-weight: 600;
+      color: var(--trustrails-primary-color, #1a73e8);
+    }
+
+    .result-item .contact-confidence {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 12px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+
+    .result-item .contact-confidence.high {
+      background: #10b981;
+      color: white;
+    }
+
+    .result-item .contact-confidence.medium {
+      background: #f59e0b;
+      color: white;
+    }
+
+    .result-item .contact-confidence.low {
+      background: #6b7280;
+      color: white;
+    }
+
+    .result-item .contact-guidance {
+      font-size: 13px;
+      color: #4b5563;
+      font-style: italic;
+      margin-top: 4px;
+    }
+
     .no-results {
       text-align: center;
       padding: 48px 24px;
@@ -1054,6 +1102,44 @@ export class TrustRailsWidget extends LitElement {
     this.searchQuery = input.value;
   }
 
+  private formatRelation(relation: string): string {
+    if (!relation) return '';
+
+    // Map common provider relations to user-friendly terms
+    const relationMap: Record<string, string> = {
+      'RECORDKEEPER': 'Recordkeeper',
+      'RECORD KEEPER': 'Recordkeeper',
+      'ADMIN': 'Administrator',
+      'ADMINISTRATOR': 'Administrator',
+      'PLAN ADMINISTRATOR': 'Plan Administrator',
+      'TRUSTEE': 'Trustee',
+      'CUSTODIAN': 'Custodian',
+      'INVESTMENT MANAGER': 'Investment Manager',
+      'INVESTMENT_MANAGER': 'Investment Manager',
+      'CONTRACT ADMINISTRATOR': 'Contract Administrator',
+      'TPA': 'Third Party Administrator',
+      'THIRD PARTY ADMINISTRATOR': 'Third Party Administrator'
+    };
+
+    // Check if we have a direct mapping
+    const upperRelation = relation.toUpperCase();
+    if (relationMap[upperRelation]) {
+      return relationMap[upperRelation];
+    }
+
+    // Check for partial matches
+    if (upperRelation.includes('RECORDKEEP')) return 'Recordkeeper';
+    if (upperRelation.includes('ADMIN')) return 'Administrator';
+    if (upperRelation.includes('TRUSTEE')) return 'Trustee';
+    if (upperRelation.includes('CUSTODIAN')) return 'Custodian';
+    if (upperRelation.includes('INVESTMENT')) return 'Investment Manager';
+
+    // Return original with proper casing if no match
+    return relation.split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+
   private handleSelectPlan(plan: any) {
     if (this.isDevelopment) {
       console.log('Plan selected:', plan);
@@ -1480,6 +1566,27 @@ export class TrustRailsWidget extends LitElement {
                             </div>
                           ` : ''}
                         </div>
+                        ${result.primaryContact ? html`
+                          <div class="primary-contact">
+                            <div class="contact-header">
+                              <span>📞 Primary Contact:</span>
+                              <span class="contact-name">${result.primaryContact.name}</span>
+                              <span class="contact-confidence ${result.contactConfidence}">
+                                ${result.contactConfidence === 'high' ? '✓ Verified' :
+                                  result.contactConfidence === 'medium' ? 'Likely' : 'Possible'}
+                              </span>
+                            </div>
+                            <div class="detail-item">
+                              <span>Role:</span>
+                              <span>${this.formatRelation(result.primaryContact.relation)}</span>
+                            </div>
+                            ${result.contactGuidance ? html`
+                              <div class="contact-guidance">
+                                💡 ${result.contactGuidance}
+                              </div>
+                            ` : ''}
+                          </div>
+                        ` : ''}
                       </div>
                     `)}
                   ` : html`

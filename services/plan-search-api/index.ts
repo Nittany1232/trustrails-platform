@@ -181,7 +181,19 @@ async function searchFirestore(params: any): Promise<any[]> {
 async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount: number }> {
   const { q, ein, state, city, type, limit, offset } = params;
 
-  // Build SQL query
+  // Check if searching for a custodian by searching the custodian table
+  if (q && q.length > 2) {
+    const custodianResults = await searchCustodians(q, state, limit);
+    if (custodianResults.length > 0) {
+      // Return custodian-focused results
+      return {
+        results: custodianResults,
+        totalCount: custodianResults.length
+      };
+    }
+  }
+
+  // Build SQL query for retirement plans
   let whereConditions: string[] = [];
   const queryParams: any[] = [];
 
@@ -266,6 +278,69 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
     results: dataResults,
     totalCount: countResult.total
   };
+}
+
+/**
+ * Search for custodians in BigQuery
+ */
+async function searchCustodians(query: string, state?: string, limit: number = 10): Promise<any[]> {
+  try {
+    let whereConditions: string[] = [];
+    const queryParams: any[] = [];
+
+    // Search by custodian name
+    whereConditions.push('UPPER(provider_other_name) LIKE UPPER(?)');
+    queryParams.push(`%${query}%`);
+
+    if (state) {
+      whereConditions.push('provider_other_us_state = ?');
+      queryParams.push(state.toUpperCase());
+    }
+
+    const sqlQuery = `
+      SELECT DISTINCT
+        provider_other_name as custodianName,
+        provider_other_ein as ein,
+        provider_other_us_city as city,
+        provider_other_us_state as state,
+        COUNT(*) as planCount,
+        ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM \`trustrails-faa3e.dol_data.schedule_c_custodians\`), 2) as marketShare
+      FROM \`trustrails-faa3e.dol_data.schedule_c_custodians\`
+      WHERE ${whereConditions.join(' AND ')}
+      GROUP BY provider_other_name, provider_other_ein, provider_other_us_city, provider_other_us_state
+      ORDER BY planCount DESC
+      LIMIT ?
+    `;
+
+    queryParams.push(limit);
+
+    const [results] = await bigquery.query({
+      query: sqlQuery,
+      params: queryParams,
+      location: 'US'
+    });
+
+    // Format as plan-like results for consistency
+    return results.map((custodian: any) => ({
+      ein: custodian.ein || 'N/A',
+      planNumber: '000',
+      planName: `${custodian.custodianName} - Custodian/Administrator`,
+      sponsorName: custodian.custodianName,
+      sponsorCity: custodian.city,
+      sponsorState: custodian.state,
+      sponsorZip: '',
+      planType: 'Custodian Services',
+      participants: custodian.planCount,
+      totalAssets: 0,
+      formYear: 2024,
+      searchRank: 100,
+      isCustodian: true,
+      marketShare: custodian.marketShare
+    }));
+  } catch (error) {
+    console.error('Custodian search error:', error);
+    return [];
+  }
 }
 
 /**
