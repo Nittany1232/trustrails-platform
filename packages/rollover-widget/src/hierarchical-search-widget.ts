@@ -1,6 +1,51 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
+// Persona SDK types based on actual Persona documentation
+interface PersonaClient {
+  open(): void;
+  cancel(): void;
+  destroy(): void;
+}
+
+interface PersonaClientConstructor {
+  new(config: PersonaConfig): PersonaClient;
+}
+
+interface PersonaConfig {
+  templateId: string;
+  environmentId: string;
+  referenceId?: string;
+  onReady?: () => void;
+  onComplete?: (params: { inquiryId: string; status: string; fields: any }) => void;
+  onCancel?: (params: { inquiryId?: string; sessionToken?: string }) => void;
+  onError?: (error: { status: number; code: string }) => void;
+  onEvent?: (name: string, meta: any) => void;
+}
+
+interface Persona {
+  Client: PersonaClientConstructor;
+}
+
+interface PersonaWindow extends Window {
+  Persona?: Persona;
+}
+
+interface SelectedPlan {
+  ein?: string;
+  planName: string;
+  planId?: string;
+  sponsorName?: string;
+  primaryContact?: {
+    name: string;
+  };
+  participants?: number;
+}
+
+type FlowState = 'initial' | 'employer' | 'custodian' | 'custodian-refinement' | 'kyc-intro' | 'kyc-verification' | 'docusign-pending';
+type SearchMode = 'initial' | 'employer' | 'custodian' | 'custodian-refinement';
+type KYCState = 'not-required' | 'checking' | 'required' | 'in-progress' | 'completed' | 'failed';
+
 /**
  * TrustRails Hierarchical Search Widget
  * A plain, themeable widget for finding 401(k) custodians
@@ -8,12 +53,21 @@ import { customElement, property, state } from 'lit/decorators.js';
  */
 @customElement('trustrails-hierarchical-search')
 export class TrustRailsHierarchicalSearch extends LitElement {
-  @property({ type: String }) apiEndpoint = 'http://localhost:8082';
+  @property({ type: String }) apiEndpoint = this.getApiEndpoint();
+  @property({ type: String, attribute: 'auth-endpoint' }) authEndpoint = this.getAuthEndpoint();
   @property({ type: String }) theme = 'default';
   @property({ type: Boolean }) debug = false;
   @property({ type: Boolean }) scrollable = false; // Enable fixed height with scroll
+  @property({ type: String, attribute: 'persona-template-id' }) personaTemplateId = 'itmpl_8432ukrCiAegZZTRnvc6mVi7xvgG';
+  @property({ type: String, attribute: 'persona-environment-id' }) personaEnvironmentId = 'env_4edUSdBFUKZ27VKgaPx3Nta3DtaP';
+  @property({ type: String, attribute: 'user-email' }) userEmail = '';
+  @property({ type: String, attribute: 'partner-id' }) partnerId = '';
+  @property({ type: String, attribute: 'api-key' }) apiKey = '';
 
-  @state() private searchMode: 'initial' | 'employer' | 'custodian' | 'custodian-refinement' = 'initial';
+  @state() private searchMode: SearchMode = 'initial';
+  @state() private flowState: FlowState = 'initial';
+  @state() private kycState: KYCState = 'not-required';
+  @state() private selectedPlan: SelectedPlan | null = null;
   @state() private loading = false;
   @state() private loadingMore = false;
   @state() private searchQuery = '';
@@ -24,9 +78,53 @@ export class TrustRailsHierarchicalSearch extends LitElement {
   @state() private totalResults = 0;
   @state() private selectedCustodian: any = null;
   @state() private custodianStats: any = null;
+  @state() private personaClient: PersonaClient | null = null;
+  @state() private personaLoaded = false;
+  @state() private kycError = '';
+  @state() private bearerToken = '';
+  @state() private userId = '';
+  @state() private userSession: any = null;
 
   private readonly resultsPerPage = 5; // Keep it compact for embedded widgets
   private readonly largeCustomdianThreshold = 2; // Plans threshold for requiring refinement (lowered for testing - set to 100+ for production)
+
+  /**
+   * Detect if running in development environment
+   */
+  private isDevelopment(): boolean {
+    return window.location.hostname === 'localhost' ||
+           window.location.hostname === '127.0.0.1' ||
+           window.location.hostname.startsWith('192.168.') ||
+           window.location.hostname.endsWith('.local');
+  }
+
+  /**
+   * Get the appropriate API endpoint based on environment
+   */
+  private getApiEndpoint(): string {
+    if (this.isDevelopment()) {
+      // In development, use the proxy server
+      const proxyPort = 8091;
+      return `http://localhost:${proxyPort}`;
+    }
+
+    // In production, use the configured production endpoint
+    return 'https://api.trustrails.com'; // TODO: Replace with actual production endpoint
+  }
+
+  /**
+   * Get the appropriate auth endpoint based on environment
+   */
+  private getAuthEndpoint(): string {
+    if (this.isDevelopment()) {
+      // In development, use the proxy server for auth endpoints
+      const proxyPort = 8091;
+      return `http://localhost:${proxyPort}/api/widget/auth`;
+    }
+
+    // In production, use the configured production endpoint
+    return 'https://api.trustrails.com/api/widget/auth'; // TODO: Replace with actual production endpoint
+  }
 
   // Major custodians for quick selection
   private readonly custodians = [
@@ -43,6 +141,100 @@ export class TrustRailsHierarchicalSearch extends LitElement {
     { name: 'Wells Fargo', id: 'wellsfargo' },
     { name: 'Transamerica', id: 'transamerica' }
   ];
+
+  override async connectedCallback() {
+    super.connectedCallback();
+
+    // Initialize authentication if user-email is provided
+    if (this.userEmail && this.partnerId && this.apiKey) {
+      await this.initializeUserSession();
+    } else {
+      if (this.debug) {
+        console.log('[Widget] Skipping authentication - missing required attributes:', {
+          hasUserEmail: !!this.userEmail,
+          hasPartnerId: !!this.partnerId,
+          hasApiKey: !!this.apiKey
+        });
+      }
+    }
+  }
+
+  private async initializeUserSession() {
+    if (this.debug) {
+      console.log('[Widget] Initializing user session for:', this.userEmail);
+      console.log('[Widget] Auth endpoint:', this.authEndpoint);
+      console.log('[Widget] Partner ID:', this.partnerId);
+      console.log('[Widget] API Key:', this.apiKey);
+    }
+
+    try {
+      // Step 1: Get widget authentication token
+      const authResponse = await fetch(this.authEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-TrustRails-Partner-ID': this.partnerId,
+          'X-TrustRails-API-Key': this.apiKey
+        },
+        body: JSON.stringify({})
+      });
+
+      if (!authResponse.ok) {
+        const errorText = await authResponse.text();
+        console.error('[Widget] Auth response error:', errorText);
+        throw new Error(`Failed to authenticate widget: ${authResponse.status} - ${errorText}`);
+      }
+
+      const authData = await authResponse.json();
+      this.bearerToken = authData.bearer_token;
+
+      // Step 2: Create/retrieve user account
+      const createAccountEndpoint = this.authEndpoint.replace('/auth', '/create-account');
+      const userResponse = await fetch(createAccountEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.bearerToken}`,
+          'X-TrustRails-Partner-ID': this.partnerId
+        },
+        body: JSON.stringify({
+          auth_type: 'email',
+          email: this.userEmail,
+          password: 'temp_password_' + Date.now() // Temporary password for demo
+        })
+      });
+
+      if (!userResponse.ok) {
+        throw new Error('Failed to create/retrieve user account');
+      }
+
+      const userData = await userResponse.json();
+      this.userSession = userData.user;
+      this.userId = userData.user.id;
+
+      if (this.debug) {
+        console.log('[Widget] User session established:', {
+          userId: this.userId,
+          email: this.userSession.email,
+          kycStatus: this.userSession.kyc_status,
+          personaId: this.userSession.persona_id
+        });
+      }
+
+      // Dispatch event to notify parent
+      this.dispatchEvent(new CustomEvent('trustrails-user-ready', {
+        detail: {
+          userId: this.userId,
+          email: this.userSession.email,
+          kycStatus: this.userSession.kyc_status
+        },
+        bubbles: true,
+        composed: true
+      }));
+    } catch (error) {
+      console.error('[Widget] Failed to initialize user session:', error);
+    }
+  }
 
   static override styles = css`
     :host {
@@ -253,10 +445,27 @@ export class TrustRailsHierarchicalSearch extends LitElement {
       padding: 1rem;
       margin-bottom: 0.75rem;
       transition: all var(--tr-transition);
+      position: relative;
     }
 
     .result-card:hover {
       box-shadow: var(--tr-shadow);
+    }
+
+    /* ML-Enhanced Tier Styling */
+    .result-card.enterprise {
+      border-left: 4px solid #10b981;
+      background: linear-gradient(135deg, var(--tr-surface) 0%, #f0fdf4 100%);
+    }
+
+    .result-card.large {
+      border-left: 4px solid #3b82f6;
+      background: linear-gradient(135deg, var(--tr-surface) 0%, #eff6ff 100%);
+    }
+
+    .result-card.medium {
+      border-left: 4px solid #f59e0b;
+      background: linear-gradient(135deg, var(--tr-surface) 0%, #fefbf0 100%);
     }
 
     .result-header {
@@ -302,6 +511,73 @@ export class TrustRailsHierarchicalSearch extends LitElement {
       background: #fee2e2;
       border-color: #fca5a5;
       color: #7f1d1d;
+    }
+
+    /* ML Relevance Score Badges */
+    .ml-score {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      border: 1px solid;
+      font-weight: 500;
+      margin-left: 0.5rem;
+    }
+
+    .ml-score.high {
+      background: #dcfce7;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+
+    .ml-score.medium {
+      background: #fef3c7;
+      border-color: #fde68a;
+      color: #92400e;
+    }
+
+    .ml-score.low {
+      background: #f3f4f6;
+      border-color: #d1d5db;
+      color: #374151;
+    }
+
+    /* Tier Badges */
+    .tier-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .tier-badge.enterprise {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #86efac;
+    }
+
+    .tier-badge.large {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #93c5fd;
+    }
+
+    .tier-badge.medium {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fcd34d;
+    }
+
+    .tier-badge.small {
+      background: #f3f4f6;
+      color: #374151;
+      border: 1px solid #d1d5db;
     }
 
     .result-details {
@@ -512,9 +788,220 @@ export class TrustRailsHierarchicalSearch extends LitElement {
       margin-bottom: 0.75rem;
       color: var(--tr-text-primary);
     }
+
+    /* KYC Flow Styles */
+    .kyc-intro {
+      text-align: center;
+      padding: 2rem;
+      background: var(--tr-surface);
+      border: 1px solid var(--tr-border);
+      border-radius: var(--tr-radius);
+      margin-top: 1rem;
+    }
+
+    .kyc-intro h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--tr-text-primary);
+      margin-bottom: 1rem;
+    }
+
+    .kyc-intro p {
+      color: var(--tr-text-secondary);
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+
+    .kyc-verification {
+      padding: 1rem;
+      background: var(--tr-background);
+      border: 1px solid var(--tr-border);
+      border-radius: var(--tr-radius);
+      margin-top: 1rem;
+    }
+
+    .kyc-container {
+      min-height: 400px;
+      background: var(--tr-background);
+      border-radius: var(--tr-radius);
+    }
+
+    .kyc-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem;
+      color: var(--tr-text-secondary);
+    }
+
+    .kyc-loading .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--tr-border);
+      border-top-color: var(--tr-primary-color);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 1rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .kyc-success {
+      text-align: center;
+      padding: 2rem;
+      background: var(--tr-surface);
+      border: 1px solid var(--tr-border);
+      border-radius: var(--tr-radius);
+      margin-top: 1rem;
+    }
+
+    .success-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .kyc-success h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--tr-text-primary);
+      margin-bottom: 0.5rem;
+    }
+
+    .kyc-failed {
+      text-align: center;
+      padding: 2rem;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: var(--tr-radius);
+      margin-top: 1rem;
+    }
+
+    .kyc-failed h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #991b1b;
+      margin-bottom: 1rem;
+    }
+
+    .kyc-failed p {
+      color: #7f1d1d;
+      margin-bottom: 1.5rem;
+    }
+
+    .docusign-pending {
+      text-align: center;
+      padding: 2rem;
+      background: var(--tr-surface);
+      border: 1px solid var(--tr-border);
+      border-radius: var(--tr-radius);
+      margin-top: 1rem;
+    }
+
+    .docusign-pending h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--tr-text-primary);
+      margin-bottom: 1rem;
+    }
+
+    .docusign-pending p {
+      color: var(--tr-text-secondary);
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+
+    .btn-primary {
+      background: var(--tr-primary-color);
+      color: white;
+      border: none;
+      border-radius: var(--tr-radius);
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--tr-transition);
+      margin: 0.5rem;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: var(--tr-background);
+      color: var(--tr-primary-color);
+      border: 2px solid var(--tr-primary-color);
+      border-radius: var(--tr-radius);
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--tr-transition);
+      margin: 0.5rem;
+    }
+
+    .btn-secondary:hover {
+      background: var(--tr-primary-color);
+      color: white;
+    }
+
+    .btn-link {
+      background: none;
+      color: var(--tr-primary-color);
+      border: none;
+      font-size: 0.875rem;
+      cursor: pointer;
+      text-decoration: underline;
+      margin: 0.5rem;
+    }
+
+    .plan-summary {
+      background: var(--tr-surface);
+      border: 1px solid var(--tr-border);
+      border-radius: var(--tr-radius);
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .plan-summary h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--tr-text-primary);
+      margin-bottom: 0.5rem;
+    }
+
+    .plan-summary p {
+      font-size: 0.875rem;
+      color: var(--tr-text-secondary);
+      margin: 0.25rem 0;
+    }
   `;
 
   override render() {
+    // If a plan is selected, show the KYC flow
+    if (this.selectedPlan) {
+      return html`
+        <div class="container">
+          <div class="header">
+            <h2 class="title">Complete Your Rollover</h2>
+            <p class="subtitle">We'll guide you through the next steps</p>
+          </div>
+
+          ${this.renderPlanSummary()}
+          ${this.renderKYCFlow()}
+
+          <a class="reset-link" @click=${() => this.reset()}>
+            ← Start over
+          </a>
+        </div>
+      `;
+    }
+
+    // Otherwise show the search interface
     return html`
       <div class="container">
         <div class="header">
@@ -672,7 +1159,8 @@ export class TrustRailsHierarchicalSearch extends LitElement {
 
         <div class="results-list">
           ${this.searchResults.map(result => html`
-          <div class="result-card">
+          <div class="result-card ${this.getTierClass(result)}">
+            ${this.renderTierBadge(result)}
             <div class="result-header">
               <div>
                 <div class="result-title">${result.planName || result.sponsorName}</div>
@@ -680,9 +1168,12 @@ export class TrustRailsHierarchicalSearch extends LitElement {
                   ${result.sponsorCity ? `${result.sponsorCity}, ${result.sponsorState}` : ''}
                 </div>
               </div>
-              <span class="confidence-badge ${this.getConfidenceClass(result.contactConfidence)}">
-                ${this.getConfidenceLabel(result.contactConfidence)}
-              </span>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="confidence-badge ${this.getConfidenceClass(result.contactConfidence)}">
+                  ${this.getConfidenceLabel(result.contactConfidence)}
+                </span>
+                ${this.renderMLScore(result)}
+              </div>
             </div>
 
             <div class="result-details">
@@ -802,7 +1293,11 @@ export class TrustRailsHierarchicalSearch extends LitElement {
       if (!response.ok) throw new Error('Search failed');
 
       const data = await response.json();
-      const newResults = data.results || [];
+      let newResults = data.results || [];
+
+      // Apply ML enhancements to results
+      newResults = this.enhanceSearchResults(newResults);
+      newResults = this.sortResultsByRelevance(newResults);
 
       if (loadMore) {
         this.searchResults = [...this.searchResults, ...newResults];
@@ -942,7 +1437,11 @@ export class TrustRailsHierarchicalSearch extends LitElement {
       if (!response.ok) throw new Error('Search failed');
 
       const data = await response.json();
-      const newResults = data.results || [];
+      let newResults = data.results || [];
+
+      // Apply ML enhancements to results
+      newResults = this.enhanceSearchResults(newResults);
+      newResults = this.sortResultsByRelevance(newResults);
 
       if (loadMore) {
         this.searchResults = [...this.searchResults, ...newResults];
@@ -979,8 +1478,30 @@ export class TrustRailsHierarchicalSearch extends LitElement {
   }
 
   private selectResult(result: any) {
+    // Store the selected plan with required information
+    this.selectedPlan = {
+      ein: result.ein || result.planId || '',
+      planName: result.planName || result.sponsorName || '',
+      planId: result.planId || result.id || '',
+      sponsorName: result.sponsorName || '',
+      primaryContact: result.primaryContact || null,
+      participants: result.participants || 0
+    };
+
+    // Emit plan-selected event
     this.dispatchEvent(new CustomEvent('plan-selected', {
-      detail: result,
+      detail: this.selectedPlan,
+      bubbles: true,
+      composed: true
+    }));
+
+    // Transition to KYC intro
+    this.flowState = 'kyc-intro';
+    this.kycState = 'required';
+
+    // Emit flow state change event
+    this.dispatchEvent(new CustomEvent('flow-state-changed', {
+      detail: { state: this.flowState, plan: this.selectedPlan },
       bubbles: true,
       composed: true
     }));
@@ -988,10 +1509,24 @@ export class TrustRailsHierarchicalSearch extends LitElement {
 
   private reset() {
     this.searchMode = 'initial';
+    this.flowState = 'initial';
     this.searchQuery = '';
     this.selectedCustodian = null;
     this.custodianStats = null;
+    this.selectedPlan = null;
+    this.kycState = 'not-required';
+    this.kycError = '';
     this.resetPagination();
+
+    // Clean up Persona client if it exists
+    if (this.personaClient) {
+      try {
+        this.personaClient.destroy();
+      } catch (error) {
+        console.warn('Error destroying Persona client:', error);
+      }
+      this.personaClient = null;
+    }
   }
 
   private async loadMoreResults() {
@@ -1020,6 +1555,494 @@ export class TrustRailsHierarchicalSearch extends LitElement {
       case 'low': return '? Uncertain';
       default: return 'Unknown';
     }
+  }
+
+  // ML-Enhanced Helper Methods
+  private enhanceSearchResults(results: any[]): any[] {
+    return results.map(result => {
+      // Add ML metadata if not present
+      if (!result.metadata) {
+        result.metadata = this.generateMLMetadata(result);
+      }
+      return result;
+    });
+  }
+
+  private generateMLMetadata(result: any): any {
+    const sponsorName = (result.sponsorName || '').toUpperCase();
+    const participants = result.participants || 0;
+
+    // Determine company tier based on size and recognition
+    let tier = 'small';
+    let mlRelevanceScore = 50; // Base score
+
+    // Fortune company recognition (enterprise tier)
+    const isFortuneCompany = /\b(MICROSOFT|APPLE|AMAZON|GOOGLE|META|FACEBOOK|TESLA|NETFLIX|ORACLE|SALESFORCE|ADOBE|NVIDIA|INTEL|IBM|CISCO|WALMART|TARGET|HOME DEPOT|JPMORGAN|BANK OF AMERICA|WELLS FARGO|GOLDMAN SACHS)\b/.test(sponsorName);
+
+    if (isFortuneCompany) {
+      tier = 'enterprise';
+      mlRelevanceScore += 30; // Significant boost for Fortune companies
+    } else if (participants >= 10000) {
+      tier = 'large';
+      mlRelevanceScore += 20;
+    } else if (participants >= 1000) {
+      tier = 'medium';
+      mlRelevanceScore += 10;
+    }
+
+    // Participant size scoring
+    if (participants >= 50000) {
+      mlRelevanceScore += 15;
+    } else if (participants >= 10000) {
+      mlRelevanceScore += 10;
+    } else if (participants >= 1000) {
+      mlRelevanceScore += 5;
+    }
+
+    // Asset-based scoring (if available)
+    if (result.totalAssets) {
+      if (result.totalAssets >= 1000000000) { // $1B+
+        mlRelevanceScore += 10;
+      } else if (result.totalAssets >= 100000000) { // $100M+
+        mlRelevanceScore += 5;
+      }
+    }
+
+    // Cap the score at 100
+    mlRelevanceScore = Math.min(100, mlRelevanceScore);
+
+    return {
+      tier,
+      mlRelevanceScore,
+      searchRank: mlRelevanceScore,
+      resultConfidence: mlRelevanceScore >= 80 ? 1.0 : mlRelevanceScore >= 60 ? 0.8 : 0.6
+    };
+  }
+
+  private sortResultsByRelevance(results: any[]): any[] {
+    return results.sort((a, b) => {
+      const aTier = a.metadata?.tier || 'small';
+      const bTier = b.metadata?.tier || 'small';
+
+      // Tier priority: enterprise > large > medium > small
+      const tierOrder = { enterprise: 4, large: 3, medium: 2, small: 1 };
+      const aTierScore = tierOrder[aTier as keyof typeof tierOrder] || 1;
+      const bTierScore = tierOrder[bTier as keyof typeof tierOrder] || 1;
+
+      if (aTierScore !== bTierScore) {
+        return bTierScore - aTierScore; // Higher tier first
+      }
+
+      // Within same tier, sort by ML relevance score
+      const aScore = a.metadata?.mlRelevanceScore || 50;
+      const bScore = b.metadata?.mlRelevanceScore || 50;
+      return bScore - aScore;
+    });
+  }
+
+  private getTierClass(result: any): string {
+    return result.metadata?.tier || 'small';
+  }
+
+  private renderTierBadge(result: any) {
+    const tier = result.metadata?.tier;
+    if (!tier || tier === 'small') return '';
+
+    const tierConfig = {
+      enterprise: { label: '⭐ Fortune', icon: '⭐' },
+      large: { label: '🏢 Large Corp', icon: '🏢' },
+      medium: { label: '🏬 Mid-Size', icon: '🏬' }
+    };
+
+    const config = tierConfig[tier as keyof typeof tierConfig];
+    if (!config) return '';
+
+    return html`
+      <div class="tier-badge ${tier}">
+        ${config.icon} ${config.label}
+      </div>
+    `;
+  }
+
+  private renderMLScore(result: any) {
+    const score = result.metadata?.mlRelevanceScore;
+    if (!score) return '';
+
+    const scoreClass = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
+    const icon = score >= 70 ? '🎯' : score >= 40 ? '📍' : '📌';
+
+    return html`
+      <span class="ml-score ${scoreClass}">
+        ${icon} ${Math.round(score)}
+      </span>
+    `;
+  }
+
+  // KYC Flow Rendering Methods
+  private renderPlanSummary() {
+    if (!this.selectedPlan) return '';
+
+    return html`
+      <div class="plan-summary">
+        <h4>Selected Retirement Plan</h4>
+        <p><strong>Plan:</strong> ${this.selectedPlan.planName}</p>
+        ${this.selectedPlan.sponsorName ? html`<p><strong>Employer:</strong> ${this.selectedPlan.sponsorName}</p>` : ''}
+        ${this.selectedPlan.primaryContact?.name ? html`<p><strong>Provider:</strong> ${this.selectedPlan.primaryContact.name}</p>` : ''}
+        ${this.selectedPlan.participants ? html`<p><strong>Participants:</strong> ${this.selectedPlan.participants.toLocaleString()}</p>` : ''}
+      </div>
+    `;
+  }
+
+  private renderKYCFlow() {
+    switch (this.kycState) {
+      case 'checking':
+        return html`
+          <div class="kyc-loading">
+            <div class="spinner"></div>
+            <p>Checking verification requirements...</p>
+          </div>
+        `;
+
+      case 'required':
+        return html`
+          <div class="kyc-intro">
+            <h3>🔐 Identity Verification Required</h3>
+            <p>For your benefit, we need to gather and verify information before making a request to the record keeper.</p>
+            <p>This secure process takes just 2-3 minutes and helps protect your retirement savings.</p>
+            <ul style="text-align: left; display: inline-block; margin: 1rem 0;">
+              <li>Government-issued ID required</li>
+              <li>Bank-level security & encryption</li>
+              <li>Compliant with federal regulations</li>
+            </ul>
+            <button class="btn-primary" @click=${this.startKYC}>
+              Start Verification
+            </button>
+          </div>
+        `;
+
+      case 'in-progress':
+        return html`
+          <div class="kyc-verification">
+            <div class="kyc-loading">
+              <div class="spinner"></div>
+              <p>Loading Persona verification...</p>
+            </div>
+          </div>
+        `;
+
+      case 'completed':
+        return html`
+          <div class="kyc-success">
+            <div class="success-icon">✅</div>
+            <h3>Identity Verified Successfully</h3>
+            <p>Thank you! Your identity has been verified. Proceeding to document signing...</p>
+            <button class="btn-primary" @click=${this.proceedToDocuSign}>
+              Continue to Documents
+            </button>
+          </div>
+        `;
+
+      case 'failed':
+        return html`
+          <div class="kyc-failed">
+            <h3>⚠️ Verification Issue</h3>
+            <p>${this.kycError || 'We encountered an issue verifying your identity. Please try again or contact support.'}</p>
+            <button class="btn-secondary" @click=${this.retryKYC}>
+              Try Again
+            </button>
+            <button class="btn-link" @click=${this.contactSupport}>
+              Contact Support
+            </button>
+          </div>
+        `;
+
+      default:
+        if (this.flowState === 'docusign-pending') {
+          return html`
+            <div class="docusign-pending">
+              <h3>📄 Document Signing</h3>
+              <p>Great! Your identity has been verified. Next, you'll need to sign the rollover authorization documents.</p>
+              <p>You'll receive an email with a secure link to sign your documents electronically.</p>
+              <button class="btn-primary" @click=${this.initiateDocuSign}>
+                Send Documents for Signing
+              </button>
+            </div>
+          `;
+        }
+        return '';
+    }
+  }
+
+  // KYC Flow Methods
+  private async startKYC() {
+    this.kycState = 'in-progress';
+    this.flowState = 'kyc-verification';
+    this.kycError = '';
+
+    try {
+      // Emit KYC started event
+      this.dispatchEvent(new CustomEvent('kyc-started', {
+        detail: { plan: this.selectedPlan },
+        bubbles: true,
+        composed: true
+      }));
+
+      // Load Persona SDK and initialize
+      await this.loadPersonaSDK();
+      await this.initializePersona();
+    } catch (error) {
+      console.error('Error starting KYC:', error);
+      this.kycState = 'failed';
+      this.kycError = 'Failed to initialize verification. Please try again.';
+    }
+  }
+
+  private async loadPersonaSDK(): Promise<void> {
+    if (this.personaLoaded) return;
+
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      // Using the correct Persona SDK URL from npm
+      script.src = 'https://cdn.withpersona.com/dist/persona-v5.3.1.js';
+      script.crossOrigin = 'anonymous';
+      // TODO: Add integrity hash from Persona dashboard for production
+      // script.integrity = 'sha384-YOUR_INTEGRITY_HASH_HERE';
+      script.async = true;
+      script.onload = () => {
+        this.personaLoaded = true;
+        resolve();
+      };
+      script.onerror = () => {
+        reject(new Error('Failed to load Persona SDK'));
+      };
+
+      // Append to document head instead of shadow root for global availability
+      document.head.appendChild(script);
+    });
+  }
+
+  private async initializePersona() {
+    const personaWindow = window as PersonaWindow;
+
+    if (!personaWindow.Persona) {
+      throw new Error('Persona SDK not loaded');
+    }
+
+    if (!this.personaEnvironmentId) {
+      throw new Error('Persona environment ID is required. Please provide persona-environment-id attribute.');
+    }
+
+    try {
+      let currentInquiryId: string | null = null;
+
+      // Generate a unique reference ID for this user session
+      const referenceId = `trustrails_${this.selectedPlan?.ein || 'unknown'}_${Date.now()}`;
+
+      // Create Persona client matching the documentation exactly
+      this.personaClient = new personaWindow.Persona.Client({
+        templateId: this.personaTemplateId, // itmpl_8432ukrCiAegZZTRnvc6mVi7xvgG
+        environmentId: this.personaEnvironmentId, // Must be provided by partner
+        referenceId: referenceId, // Optional but recommended for tracking
+        onReady: () => {
+          console.log('Persona client ready, opening verification flow...');
+          // Open the Persona modal immediately when ready (as per documentation)
+          this.personaClient?.open();
+        },
+        onEvent: (name: string, meta: any) => {
+          console.log(`Received event: ${name}`);
+
+          switch (name) {
+            case 'start':
+              // Collect and save the inquiry ID for future use
+              currentInquiryId = meta['inquiryId'];
+              console.log(`Inquiry started with ID: ${currentInquiryId}`);
+              break;
+            default:
+              console.log(`Event meta:`, JSON.stringify(meta));
+          }
+        },
+        onComplete: ({ inquiryId, status, fields }) => {
+          // Inquiry completed. Optionally tell your server about it.
+          console.log(`Sending finished inquiry ${inquiryId} to backend`);
+          console.log('KYC Status:', status);
+
+          // Destroy the client to close the modal
+          if (this.personaClient) {
+            this.personaClient.destroy();
+            this.personaClient = null;
+          }
+
+          this.handleKYCComplete(inquiryId, status, fields);
+        },
+        onCancel: ({ inquiryId, sessionToken }) => {
+          console.log('onCancel', { inquiryId, sessionToken });
+
+          // Destroy the client to close the modal
+          if (this.personaClient) {
+            this.personaClient.destroy();
+            this.personaClient = null;
+          }
+
+          this.handleKYCCancel();
+        },
+        onError: (error: { status: number; code: string }) => {
+          console.log('onError:', error);
+
+          // Destroy the client to close the modal
+          if (this.personaClient) {
+            this.personaClient.destroy();
+            this.personaClient = null;
+          }
+
+          this.handleKYCError(error);
+        }
+      });
+    } catch (error) {
+      console.error('Error initializing Persona:', error);
+      throw error;
+    }
+  }
+
+  private async handleKYCComplete(inquiryId: string, status: string, _fields: any) {
+    console.log('Persona inquiry completed:', { inquiryId, status });
+
+    // Update Firebase user with KYC completion
+    if (this.bearerToken && this.userId) {
+      try {
+        const kycUpdateEndpoint = this.authEndpoint.replace('/auth', '/kyc/complete');
+
+        const updateResponse = await fetch(kycUpdateEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.bearerToken}`,
+            'X-TrustRails-Partner-ID': this.partnerId
+          },
+          body: JSON.stringify({
+            userId: this.userId,
+            personaId: inquiryId,
+            kycStatus: status === 'completed' ? 'completed' : 'failed',
+            kycCompletedAt: new Date().toISOString(),
+            kycVerificationLevel: 'standard'
+          })
+        });
+
+        if (updateResponse.ok) {
+          console.log('Successfully updated user KYC status in Firebase');
+
+          // Update local user session
+          if (this.userSession) {
+            this.userSession.persona_id = inquiryId;
+            this.userSession.kyc_status = 'completed';
+            this.userSession.kyc_completed_at = new Date().toISOString();
+          }
+        } else {
+          console.error('Failed to update KYC status:', await updateResponse.text());
+        }
+      } catch (error) {
+        console.error('Error updating KYC status:', error);
+      }
+    }
+
+    this.kycState = 'completed';
+
+    // Auto-proceed to DocuSign after a short delay
+    setTimeout(() => {
+      this.proceedToDocuSign();
+    }, 2000);
+  }
+
+  private handleKYCCancel() {
+    console.log('KYC cancelled by user');
+
+    this.kycState = 'required';
+    this.flowState = 'kyc-intro';
+
+    // Emit KYC cancelled event
+    this.dispatchEvent(new CustomEvent('kyc-cancelled', {
+      detail: { plan: this.selectedPlan },
+      bubbles: true,
+      composed: true
+    }));
+  }
+
+  private handleKYCError(error: { status?: number; code?: string } | any) {
+    console.error('KYC error:', error);
+
+    this.kycState = 'failed';
+
+    // Handle specific Persona error codes from documentation
+    if (error.code) {
+      switch (error.code) {
+        case 'application_error':
+          this.kycError = 'An internal error occurred. Please contact support.';
+          break;
+        case 'invalid_config':
+          this.kycError = 'Invalid configuration. Please contact support.';
+          break;
+        case 'unauthenticated':
+          this.kycError = 'Session expired. Please refresh and try again.';
+          break;
+        case 'inactive_template':
+          this.kycError = 'Verification template is inactive. Please contact support.';
+          break;
+        default:
+          this.kycError = `Verification error: ${error.code}. Please try again.`;
+      }
+    } else {
+      this.kycError = 'Verification failed. Please try again or contact support if the issue persists.';
+    }
+  }
+
+  private retryKYC() {
+    this.kycState = 'required';
+    this.flowState = 'kyc-intro';
+    this.kycError = '';
+
+    // Clean up existing Persona client
+    if (this.personaClient) {
+      try {
+        this.personaClient.destroy();
+      } catch (error) {
+        console.warn('Error destroying Persona client:', error);
+      }
+      this.personaClient = null;
+    }
+  }
+
+  private proceedToDocuSign() {
+    this.flowState = 'docusign-pending';
+
+    // Emit flow state change event
+    this.dispatchEvent(new CustomEvent('flow-state-changed', {
+      detail: { state: this.flowState, plan: this.selectedPlan },
+      bubbles: true,
+      composed: true
+    }));
+  }
+
+  private initiateDocuSign() {
+    // Emit DocuSign initiation event
+    this.dispatchEvent(new CustomEvent('docusign-initiated', {
+      detail: { plan: this.selectedPlan },
+      bubbles: true,
+      composed: true
+    }));
+
+    // In a real implementation, this would redirect to DocuSign or open DocuSign embed
+    alert('DocuSign integration would be initiated here. This is a placeholder for the demo.');
+  }
+
+  private contactSupport() {
+    // Emit support contact event
+    this.dispatchEvent(new CustomEvent('support-contact-requested', {
+      detail: { reason: 'kyc-failed', plan: this.selectedPlan },
+      bubbles: true,
+      composed: true
+    }));
+
+    // In a real implementation, this would open a support chat or contact form
+    alert('Support contact would be initiated here. This is a placeholder for the demo.');
   }
 }
 

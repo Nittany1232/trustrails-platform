@@ -100,6 +100,9 @@ export class TrustRailsWidget extends LitElement {
   @property({ type: String }) environment: 'sandbox' | 'production' = 'sandbox';
   @property({ type: String, attribute: 'api-endpoint' }) apiEndpoint = ''; // Optional custom API endpoint
   @property({ type: String, attribute: 'auth-endpoint' }) authEndpoint = ''; // Optional custom auth endpoint
+  @property({ type: String, attribute: 'kyc-required' }) kycRequired = 'auto'; // Options: auto, always, never
+  @property({ type: String, attribute: 'persona-template-id' }) personaTemplateId = '';
+  @property({ type: String, attribute: 'persona-environment' }) personaEnvironment = 'sandbox'; // sandbox or production
   @property({ type: Object }) theme = {
     primaryColor: '#1a73e8',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -120,8 +123,13 @@ export class TrustRailsWidget extends LitElement {
   @state() private searchResults: any[] = [];
   @state() private isSearching = false;
   @state() private hasSearched = false;
-  @state() private currentFlow: 'start' | 'recordkeeper' | 'employer' = 'start';
+  @state() private currentFlow: 'start' | 'recordkeeper' | 'employer' | 'kyc' = 'start';
   @state() private selectedRecordkeeper: string | null = null;
+  @state() private kycState: 'not_started' | 'checking' | 'required' | 'in_progress' | 'completed' | 'failed' = 'not_started';
+  @state() private kycError: string | null = null;
+  @state() private personaLoaded = false;
+  @state() private kycInquiryId: string | null = null;
+  @state() private selectedPlan: any = null;
 
   // Development mode flag - only log sensitive data in development
   private get isDevelopment(): boolean {
@@ -649,6 +657,7 @@ export class TrustRailsWidget extends LitElement {
       margin-bottom: 12px;
       cursor: pointer;
       transition: all 0.2s ease;
+      position: relative;
     }
 
     .result-item:hover {
@@ -661,11 +670,96 @@ export class TrustRailsWidget extends LitElement {
       background: var(--trustrails-primary-bg, #eff6ff);
     }
 
+    .result-item.enterprise {
+      border-left: 4px solid #10b981;
+      background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+    }
+
+    .result-item.large {
+      border-left: 4px solid #3b82f6;
+    }
+
+    .result-item.medium {
+      border-left: 4px solid #f59e0b;
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+
     .result-title {
       font-size: 16px;
       font-weight: 600;
       color: var(--trustrails-heading-color, #1f2937);
-      margin: 0 0 8px 0;
+      margin: 0;
+      flex: 1;
+    }
+
+    .result-badges {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-left: 12px;
+    }
+
+    .tier-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.025em;
+    }
+
+    .tier-badge.enterprise {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .tier-badge.large {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .tier-badge.medium {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .tier-badge.small {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+
+    .ml-score {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 2px 6px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 500;
+      color: #475569;
+    }
+
+    .ml-score.high {
+      background: #dcfce7;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+
+    .ml-score.medium {
+      background: #fef3c7;
+      border-color: #fde68a;
+      color: #92400e;
     }
 
     .result-details {
@@ -946,6 +1040,146 @@ export class TrustRailsWidget extends LitElement {
       clip: rect(0, 0, 0, 0);
       white-space: nowrap;
       border: 0;
+    }
+
+    /* KYC Flow Styles */
+    .kyc-flow {
+      padding: 20px 0;
+    }
+
+    .kyc-intro {
+      text-align: center;
+      padding: 32px 24px;
+      background: var(--trustrails-primary-bg, #eff6ff);
+      border: 1px solid var(--trustrails-primary-color, #3b82f6);
+      border-radius: var(--trustrails-border-radius, 12px);
+      margin-bottom: 24px;
+    }
+
+    .kyc-intro h3 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--trustrails-heading-color, #1f2937);
+      margin: 0 0 12px 0;
+    }
+
+    .kyc-intro p {
+      font-size: 15px;
+      color: var(--trustrails-muted-color, #6b7280);
+      margin: 0 0 20px 0;
+      line-height: 1.5;
+    }
+
+    .kyc-intro ul {
+      text-align: left;
+      max-width: 300px;
+      margin: 0 auto 24px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .kyc-intro li {
+      padding: 8px 0;
+      color: var(--trustrails-text-color, #1f2937);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+
+    .kyc-intro li::before {
+      content: '✓';
+      color: var(--trustrails-success-color, #10b981);
+      font-weight: bold;
+    }
+
+    .kyc-embed {
+      margin: 20px 0;
+      border: 1px solid var(--trustrails-border-color, #e5e7eb);
+      border-radius: var(--trustrails-border-radius, 12px);
+      overflow: hidden;
+      min-height: 400px;
+    }
+
+    .kyc-success {
+      text-align: center;
+      padding: 48px 24px;
+      background: var(--trustrails-success-bg, #f0fdf4);
+      border: 1px solid var(--trustrails-success-border, #bbf7d0);
+      border-radius: var(--trustrails-border-radius, 12px);
+    }
+
+    .kyc-success .success-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .kyc-success h3 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--trustrails-success-text, #065f46);
+      margin: 0 0 12px 0;
+    }
+
+    .kyc-success p {
+      color: var(--trustrails-success-text, #065f46);
+      margin: 0;
+    }
+
+    .kyc-failed {
+      text-align: center;
+      padding: 32px 24px;
+      background: var(--trustrails-error-bg, #fef2f2);
+      border: 1px solid var(--trustrails-error-border, #fecaca);
+      border-radius: var(--trustrails-border-radius, 12px);
+    }
+
+    .kyc-failed h3 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--trustrails-error-text, #991b1b);
+      margin: 0 0 12px 0;
+    }
+
+    .kyc-failed p {
+      color: var(--trustrails-error-text, #991b1b);
+      margin: 0 0 24px 0;
+    }
+
+    .kyc-checking {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--trustrails-muted-color, #6b7280);
+    }
+
+    .kyc-checking .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--trustrails-border-color, #e5e7eb);
+      border-top-color: var(--trustrails-primary-color, #3b82f6);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    .kyc-checking p {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .btn-link {
+      background: none;
+      color: var(--trustrails-primary-color, #3b82f6);
+      border: none;
+      text-decoration: underline;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 8px 16px;
+      margin-left: 8px;
+    }
+
+    .btn-link:hover {
+      color: var(--trustrails-primary-hover, #2563eb);
     }
   `;
 
@@ -1461,12 +1695,31 @@ export class TrustRailsWidget extends LitElement {
         console.log('Search results:', this.searchResults.length, 'plans found');
       }
 
-      // Dispatch search event
+      // Sort results by ML relevance score and tier for better UX
+      this.searchResults.sort((a, b) => {
+        const aScore = a.metadata?.mlRelevanceScore || 0;
+        const bScore = b.metadata?.mlRelevanceScore || 0;
+        const aTier = a.metadata?.tier || 'small';
+        const bTier = b.metadata?.tier || 'small';
+
+        // Enterprise tier gets priority
+        if (aTier === 'enterprise' && bTier !== 'enterprise') return -1;
+        if (bTier === 'enterprise' && aTier !== 'enterprise') return 1;
+
+        // Then sort by ML relevance score
+        return bScore - aScore;
+      });
+
+      // Dispatch search event with enhanced metadata
       this.dispatchEvent(new CustomEvent('trustrails-search', {
         detail: {
           query: this.searchQuery,
           results: this.searchResults,
-          count: this.searchResults.length
+          count: this.searchResults.length,
+          mlEnhanced: true,
+          avgRelevanceScore: this.searchResults.length > 0 ?
+            this.searchResults.reduce((sum, r) => sum + (r.metadata?.mlRelevanceScore || 0), 0) / this.searchResults.length : 0,
+          enterpriseResults: this.searchResults.filter(r => r.metadata?.tier === 'enterprise').length
         },
         bubbles: true,
         composed: true
@@ -1529,6 +1782,8 @@ export class TrustRailsWidget extends LitElement {
       console.log('Plan selected:', plan);
     }
 
+    this.selectedPlan = plan;
+
     // Dispatch plan selection event with both old and new structure support
     this.dispatchEvent(new CustomEvent('trustrails-plan-selected', {
       detail: {
@@ -1541,15 +1796,8 @@ export class TrustRailsWidget extends LitElement {
       composed: true
     }));
 
-    // Dispatch start event to indicate user is beginning rollover process
-    this.dispatchEvent(new CustomEvent('trustrails-start', {
-      detail: {
-        plan: plan,
-        step: 'plan-selected'
-      },
-      bubbles: true,
-      composed: true
-    }));
+    // Check if KYC is required before proceeding
+    this.checkKYCRequirement(plan);
   }
 
   // Flow navigation methods
@@ -1678,6 +1926,246 @@ export class TrustRailsWidget extends LitElement {
   // Public method to get the disabled reason
   public getDisabledReason(): DisabledReason | null {
     return this.disabledReason;
+  }
+
+  // KYC Integration Methods
+  private async checkKYCRequirement(plan: any) {
+    if (this.kycRequired === 'never') {
+      this.proceedWithoutKYC();
+      return;
+    }
+
+    if (this.kycRequired === 'always') {
+      this.initiateKYC();
+      return;
+    }
+
+    // Auto mode - check based on plan value or partner settings
+    this.kycState = 'checking';
+
+    try {
+      // Check if user already has completed KYC
+      if (this.userSession?.user_id) {
+        const kycStatus = await this.checkUserKYCStatus();
+        if (kycStatus === 'completed') {
+          this.kycState = 'completed';
+          this.proceedWithoutKYC();
+          return;
+        }
+      }
+
+      // For demo purposes, assume KYC is required for larger plans
+      const planValue = plan.planDetails?.totalAssets || plan.TOT_ASSETS || 0;
+      const requiresKYC = planValue > 50000 || this.kycRequired === 'always';
+
+      if (requiresKYC) {
+        this.initiateKYC();
+      } else {
+        this.proceedWithoutKYC();
+      }
+    } catch (error) {
+      console.error('Error checking KYC requirement:', error);
+      this.kycState = 'failed';
+      this.kycError = 'Failed to verify identity requirements. Please try again.';
+    }
+  }
+
+  private async checkUserKYCStatus(): Promise<string> {
+    if (!this.bearerToken || !this.userSession?.user_id) {
+      return 'not_started';
+    }
+
+    try {
+      const response = await this.makeAPICall('/api/widget/kyc/status');
+      return response.status || 'not_started';
+    } catch (error) {
+      console.error('Error checking KYC status:', error);
+      return 'not_started';
+    }
+  }
+
+  private initiateKYC() {
+    this.currentFlow = 'kyc';
+    this.kycState = 'required';
+  }
+
+  private proceedWithoutKYC() {
+    // Dispatch start event to indicate user is beginning rollover process
+    this.dispatchEvent(new CustomEvent('trustrails-start', {
+      detail: {
+        plan: this.selectedPlan,
+        step: 'plan-selected',
+        kycRequired: false
+      },
+      bubbles: true,
+      composed: true
+    }));
+  }
+
+  private async startKYC() {
+    if (!this.userSession?.user_id) {
+      this.kycError = 'Please create an account first';
+      return;
+    }
+
+    this.kycState = 'in_progress';
+    this.kycError = null;
+
+    try {
+      await this.initializePersonaKYC();
+    } catch (error) {
+      console.error('Error starting KYC:', error);
+      this.kycState = 'failed';
+      this.kycError = error instanceof Error ? error.message : 'Failed to start verification';
+    }
+  }
+
+  private async initializePersonaKYC() {
+    // Dynamically load Persona SDK if not already loaded
+    if (!this.personaLoaded) {
+      await this.loadPersonaSDK();
+    }
+
+    // Create inquiry session with backend
+    const inquiryData = await this.createKYCInquiry();
+    this.kycInquiryId = inquiryData.inquiryId;
+
+    // Initialize Persona client
+    const PersonaClass = (window as any).Persona;
+    if (!PersonaClass) {
+      throw new Error('Persona SDK failed to load');
+    }
+
+    const client = new PersonaClass.Client({
+      templateId: this.personaTemplateId || inquiryData.templateId,
+      environmentId: this.personaEnvironment,
+      inquiryId: inquiryData.inquiryId,
+      sessionToken: inquiryData.sessionToken,
+      onReady: () => this.handlePersonaReady(),
+      onComplete: (inquiryId: string, status: string, fields: any) =>
+        this.handleKYCComplete(inquiryId, status, fields),
+      onCancel: () => this.handleKYCCancel(),
+      onError: (error: any) => this.handleKYCError(error)
+    });
+
+    // Render in Shadow DOM container
+    const container = this.shadowRoot?.querySelector('#kyc-container');
+    if (container) {
+      client.render(container);
+    }
+  }
+
+  private async loadPersonaSDK(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if ((window as any).Persona) {
+        this.personaLoaded = true;
+        resolve();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.withpersona.com/dist/persona-v4.js';
+      script.async = true;
+
+      script.onload = () => {
+        this.personaLoaded = true;
+        resolve();
+      };
+
+      script.onerror = () => {
+        reject(new Error('Failed to load Persona SDK'));
+      };
+
+      // Append to document head, not shadow root (external scripts need document context)
+      document.head.appendChild(script);
+    });
+  }
+
+  private async createKYCInquiry() {
+    const response = await this.makeAPICall('/api/widget/kyc/create-inquiry', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: this.userSession?.user_id,
+        templateId: this.personaTemplateId,
+        environment: this.personaEnvironment
+      })
+    });
+
+    return response;
+  }
+
+  private handlePersonaReady() {
+    if (this.isDevelopment) {
+      console.log('Persona KYC ready');
+    }
+  }
+
+  private async handleKYCComplete(inquiryId: string, status: string, fields: any) {
+    if (this.isDevelopment) {
+      console.log('KYC completed:', { inquiryId, status });
+    }
+
+    try {
+      // Store the inquiryId as personaId in backend
+      await this.makeAPICall('/api/widget/kyc/complete', {
+        method: 'POST',
+        body: JSON.stringify({
+          inquiryId,
+          status,
+          fields
+        })
+      });
+
+      this.kycState = 'completed';
+      this.kycInquiryId = inquiryId;
+
+      // Wait a moment for user to see success, then proceed
+      setTimeout(() => {
+        this.proceedAfterKYC();
+      }, 2000);
+
+    } catch (error) {
+      console.error('Error completing KYC:', error);
+      this.kycState = 'failed';
+      this.kycError = 'Failed to complete verification. Please try again.';
+    }
+  }
+
+  private handleKYCCancel() {
+    if (this.isDevelopment) {
+      console.log('KYC cancelled by user');
+    }
+    this.kycState = 'required';
+  }
+
+  private handleKYCError(error: any) {
+    console.error('Persona KYC error:', error);
+    this.kycState = 'failed';
+    this.kycError = error.message || 'Verification failed. Please try again.';
+  }
+
+  private proceedAfterKYC() {
+    // Dispatch start event to indicate user is beginning rollover process
+    this.dispatchEvent(new CustomEvent('trustrails-start', {
+      detail: {
+        plan: this.selectedPlan,
+        step: 'kyc-completed',
+        kycRequired: true,
+        kycInquiryId: this.kycInquiryId
+      },
+      bubbles: true,
+      composed: true
+    }));
+  }
+
+  private retryKYC() {
+    this.kycState = 'required';
+    this.kycError = null;
+  }
+
+  private contactSupport() {
+    // Open support contact (could be email, chat, etc.)
+    window.open('mailto:support@trustrails.com?subject=KYC%20Verification%20Help', '_blank');
   }
 
   private renderDisabledMessage() {
@@ -1948,6 +2436,8 @@ export class TrustRailsWidget extends LitElement {
         return this.renderRecordkeeperFlow();
       case 'employer':
         return this.renderEmployerFlow();
+      case 'kyc':
+        return this.renderKYCFlow();
       default:
         return this.renderFlowSelection();
     }
@@ -2023,7 +2513,10 @@ export class TrustRailsWidget extends LitElement {
         ${this.isSearching ? html`
           <div class="searching-indicator" role="status" aria-live="polite">
             <div class="small-spinner" aria-hidden="true"></div>
-            <span>Searching for plans...</span>
+            <span>Searching with ML-enhanced relevance...</span>
+            <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">
+              Finding Fortune companies and high-confidence matches
+            </div>
           </div>
         ` : ''}
 
@@ -2061,7 +2554,10 @@ export class TrustRailsWidget extends LitElement {
         ${this.isSearching ? html`
           <div class="searching-indicator" role="status" aria-live="polite">
             <div class="small-spinner" aria-hidden="true"></div>
-            <span>Searching Department of Labor database...</span>
+            <span>Searching with ML-enhanced relevance...</span>
+            <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">
+              Analyzing Department of Labor data with AI-powered scoring
+            </div>
           </div>
         ` : ''}
 
@@ -2081,12 +2577,26 @@ export class TrustRailsWidget extends LitElement {
           <div class="results-header">
             <div class="results-count" aria-live="polite">
               Found ${this.searchResults.length} matching plan${this.searchResults.length === 1 ? '' : 's'}
+              ${this.searchResults.filter(r => r.metadata?.tier === 'enterprise').length > 0 ? html`
+                <span style="color: #059669; font-weight: 500; margin-left: 8px;">
+                  ⭐ ${this.searchResults.filter(r => r.metadata?.tier === 'enterprise').length} Fortune company result${this.searchResults.filter(r => r.metadata?.tier === 'enterprise').length === 1 ? '' : 's'}
+                </span>
+              ` : ''}
             </div>
+            ${this.searchResults.some(r => (r.metadata?.mlRelevanceScore || 0) >= 70) ? html`
+              <div style="font-size: 12px; color: #059669; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                <span>🤖</span>
+                <span>Results enhanced with ML-powered relevance scoring</span>
+              </div>
+            ` : ''}
           </div>
 
-          ${this.searchResults.map((result, index) => html`
+          ${this.searchResults.map((result, index) => {
+            const tier = result.metadata?.tier || 'small';
+            const mlScore = result.metadata?.mlRelevanceScore || 0;
+            return html`
             <div
-              class="result-item"
+              class="result-item ${tier}"
               @click=${() => this.handleSelectPlan(result)}
               @keydown=${(e: KeyboardEvent) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -2098,9 +2608,51 @@ export class TrustRailsWidget extends LitElement {
               role="button"
               aria-describedby="result-${index}-desc"
             >
-              <h3 class="result-title">
-                ${result.planName || result.PLAN_NAME || 'Unnamed Plan'}
-              </h3>
+              <div class="result-header">
+                <h3 class="result-title">
+                  ${result.planName || result.PLAN_NAME || 'Unnamed Plan'}
+                </h3>
+                <div class="result-badges">
+                  ${tier === 'enterprise' ? html`
+                    <div class="tier-badge enterprise">
+                      <span>⭐</span>
+                      <span>Fortune</span>
+                    </div>
+                  ` : tier === 'large' ? html`
+                    <div class="tier-badge large">
+                      <span>🏢</span>
+                      <span>Large</span>
+                    </div>
+                  ` : tier === 'medium' ? html`
+                    <div class="tier-badge medium">
+                      <span>🏬</span>
+                      <span>Mid</span>
+                    </div>
+                  ` : html`
+                    <div class="tier-badge small">
+                      <span>🏪</span>
+                      <span>Small</span>
+                    </div>
+                  `}
+
+                  ${mlScore >= 70 ? html`
+                    <div class="ml-score high">
+                      <span>🎯</span>
+                      <span>${Math.round(mlScore)}</span>
+                    </div>
+                  ` : mlScore >= 40 ? html`
+                    <div class="ml-score medium">
+                      <span>📍</span>
+                      <span>${Math.round(mlScore)}</span>
+                    </div>
+                  ` : html`
+                    <div class="ml-score">
+                      <span>📌</span>
+                      <span>${Math.round(mlScore)}</span>
+                    </div>
+                  `}
+                </div>
+              </div>
 
               <div class="result-details" id="result-${index}-desc">
                 <div class="result-detail">
@@ -2140,8 +2692,17 @@ export class TrustRailsWidget extends LitElement {
                   ` : ''}
                 </div>
               ` : ''}
+
+              ${tier === 'enterprise' || mlScore >= 80 ? html`
+                <div class="result-enhancement">
+                  <div style="font-size: 12px; color: #059669; font-weight: 500; margin-top: 8px; display: flex; align-items: center; gap: 4px;">
+                    <span>✨</span>
+                    <span>High-confidence match from ML-enhanced search</span>
+                  </div>
+                </div>
+              ` : ''}
             </div>
-          `)}
+          `;})}
         ` : this.hasSearched ? html`
           <div class="no-results" role="status">
             <h3>No plans found</h3>
@@ -2150,5 +2711,97 @@ export class TrustRailsWidget extends LitElement {
         ` : ''}
       </div>
     `;
+  }
+
+  private renderKYCFlow() {
+    return html`
+      <div class="kyc-flow">
+        <button class="back-button" @click=${this.handleBackToStart}>
+          ← Back to search
+        </button>
+
+        ${this.renderKYCState()}
+      </div>
+    `;
+  }
+
+  private renderKYCState() {
+    switch (this.kycState) {
+      case 'checking':
+        return html`
+          <div class="kyc-checking" role="status" aria-live="polite">
+            <div class="spinner" aria-hidden="true"></div>
+            <p>Checking verification requirements...</p>
+          </div>
+        `;
+
+      case 'required':
+        return html`
+          <div class="kyc-intro">
+            <h3>🔐 Identity Verification Required</h3>
+            <p>Federal regulations require us to verify your identity before processing the rollover.</p>
+            <ul>
+              <li>Takes 2-3 minutes</li>
+              <li>Government-issued ID required</li>
+              <li>Secure and encrypted</li>
+              <li>Powered by Persona</li>
+            </ul>
+            <button class="button large" @click=${this.startKYC}>
+              Start Verification
+            </button>
+            ${this.kycError ? html`
+              <div class="error" style="margin-top: 16px;">
+                ${this.kycError}
+              </div>
+            ` : ''}
+          </div>
+        `;
+
+      case 'in_progress':
+        return html`
+          <div class="flow-header">
+            <h2>Identity Verification</h2>
+            <p>Please follow the instructions to verify your identity</p>
+          </div>
+          <div id="kyc-container" class="kyc-embed">
+            <!-- Persona widget renders here -->
+            <div class="loading" style="padding: 48px;">
+              <div class="spinner" aria-hidden="true"></div>
+              <div class="loading-text">Loading verification...</div>
+            </div>
+          </div>
+        `;
+
+      case 'completed':
+        return html`
+          <div class="kyc-success">
+            <div class="success-icon">✅</div>
+            <h3>Identity Verified</h3>
+            <p>Thank you! Your identity has been successfully verified. Proceeding to the next step...</p>
+          </div>
+        `;
+
+      case 'failed':
+        return html`
+          <div class="kyc-failed">
+            <h3>⚠️ Verification Issue</h3>
+            <p>${this.kycError || 'There was an issue with your verification. Please try again.'}</p>
+            <button class="button" @click=${this.retryKYC}>
+              Try Again
+            </button>
+            <button class="btn-link" @click=${this.contactSupport}>
+              Contact Support
+            </button>
+          </div>
+        `;
+
+      default:
+        return html`
+          <div class="loading">
+            <div class="spinner" aria-hidden="true"></div>
+            <div class="loading-text">Initializing verification...</div>
+          </div>
+        `;
+    }
   }
 }
