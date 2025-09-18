@@ -26,7 +26,7 @@ export class TrustRailsHierarchicalSearch extends LitElement {
   @state() private custodianStats: any = null;
 
   private readonly resultsPerPage = 5; // Keep it compact for embedded widgets
-  private readonly largeCustomdianThreshold = 10; // Plans threshold for requiring refinement (lowered for testing)
+  private readonly largeCustomdianThreshold = 2; // Plans threshold for requiring refinement (lowered for testing - set to 100+ for production)
 
   // Major custodians for quick selection
   private readonly custodians = [
@@ -941,11 +941,10 @@ export class TrustRailsHierarchicalSearch extends LitElement {
 
     try {
       const offset = loadMore ? this.currentOffset : 0;
-      // Combine custodian and employer search by using custodian name + employer query
-      const combinedQuery = `${this.selectedCustodian.name} ${this.searchQuery}`;
-
+      // Just search for the employer name, we'll filter by custodian on the frontend
+      // This is temporary until we have proper custodian filtering in the API
       const response = await fetch(
-        `${this.apiEndpoint}/searchPlans?q=${encodeURIComponent(combinedQuery)}&limit=${this.resultsPerPage}&offset=${offset}&force_bigquery=true`
+        `${this.apiEndpoint}/searchPlans?q=${encodeURIComponent(this.searchQuery)}&limit=${this.resultsPerPage * 3}&offset=${offset}&force_bigquery=true`
       );
 
       if (!response.ok) throw new Error('Search failed');
