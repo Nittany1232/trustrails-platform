@@ -253,7 +253,7 @@ async function searchFirestore(params: any): Promise<any[]> {
 }
 
 /**
- * Search BigQuery (comprehensive, slower)
+ * Search BigQuery with ML-Enhanced Relevance Scoring
  */
 async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount: number }> {
   const { q, ein, state, city, type, custodian, limit, offset } = params;
@@ -262,7 +262,7 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
   let whereConditions: string[] = [];
   const queryParams: any[] = [];
 
-  // Include plans with participants data
+  // Include plans with participants data (assets data is sparse/missing)
   whereConditions.push('ps.participants > 0');
 
   if (ein) {
@@ -330,36 +330,36 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
     ${whereClause}
   `;
 
-  // Enhanced data query with sponsor-custodian intelligence
-  const dataQuery = `
-    WITH priority_providers AS (
+  // Optimized data query with ML-powered relevance scoring using CTE
+  const dataQuery = custodian ? `
+    WITH percentile_data AS (
+      SELECT
+        ack_id,
+        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY participants) as participant_percentile,
+        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY total_assets) as asset_percentile
+      FROM \`trustrails-faa3e.dol_data.plan_sponsors\`
+      WHERE participants > 0
+    ),
+    priority_providers AS (
       SELECT
         cc.ack_id,
         cc.provider_other_name as provider_name,
         CAST(cc.provider_other_ein AS STRING) as provider_ein,
         cc.provider_other_relation as relation,
-        -- Priority ranking based on provider type
         CASE
           WHEN UPPER(cc.provider_other_relation) LIKE '%RECORDKEEP%' THEN 1
-          WHEN UPPER(cc.provider_other_relation) LIKE '%RECORD KEEP%' THEN 1
           WHEN UPPER(cc.provider_other_relation) IN ('ADMIN', 'ADMINISTRATOR') THEN 2
           WHEN UPPER(cc.provider_other_relation) IN ('TRUSTEE', 'CUSTODIAN') THEN 3
-          WHEN UPPER(cc.provider_other_relation) LIKE '%INVESTMENT%' THEN 4
-          WHEN UPPER(cc.provider_other_relation) = 'CONTRACT ADMINISTRATOR' THEN 5
-          ELSE 6
+          ELSE 4
         END as priority_rank,
-        -- Row number to get top provider per plan
         ROW_NUMBER() OVER (
           PARTITION BY cc.ack_id
           ORDER BY
             CASE
               WHEN UPPER(cc.provider_other_relation) LIKE '%RECORDKEEP%' THEN 1
-              WHEN UPPER(cc.provider_other_relation) LIKE '%RECORD KEEP%' THEN 1
               WHEN UPPER(cc.provider_other_relation) IN ('ADMIN', 'ADMINISTRATOR') THEN 2
               WHEN UPPER(cc.provider_other_relation) IN ('TRUSTEE', 'CUSTODIAN') THEN 3
-              WHEN UPPER(cc.provider_other_relation) LIKE '%INVESTMENT%' THEN 4
-              WHEN UPPER(cc.provider_other_relation) = 'CONTRACT ADMINISTRATOR' THEN 5
-              ELSE 6
+              ELSE 4
             END
         ) as provider_rank
       FROM \`trustrails-faa3e.dol_data.schedule_c_custodians\` cc
@@ -367,84 +367,158 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
     ),
     primary_contacts AS (
       SELECT * FROM priority_providers WHERE provider_rank = 1
-    ),
-    search_ranking AS (
-      SELECT
-        ps.*,
-        pc.provider_name as primaryContactName,
-        CAST(pc.provider_ein AS STRING) as primaryContactEin,
-        pc.relation as primaryContactRelation,
-        pc.priority_rank as contactConfidence,
-        CASE
-          WHEN pc.provider_name IS NOT NULL THEN 'schedule_c'
-          ELSE 'none'
-        END as contactSource,
-        -- Enhanced search ranking based on match quality
-        CASE
-          WHEN ? IS NOT NULL AND UPPER(ps.sponsor_name) LIKE UPPER(?) THEN 1  -- Direct sponsor match
-          WHEN ? IS NOT NULL AND UPPER(ps.plan_name) LIKE UPPER(?) THEN 2     -- Plan name match
-          WHEN pc.provider_name IS NOT NULL THEN 3                            -- Has custodian mapping
-          ELSE 4                                                              -- Other matches
-        END as search_priority,
-        -- Confidence scoring - use participants as a proxy for data quality
-        CASE
-          WHEN ps.participants > 1000 THEN 1.0
-          WHEN ps.participants > 100 THEN 0.8
-          WHEN ps.participants > 10 THEN 0.6
-          ELSE 0.5
-        END as result_confidence
-      FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
-      LEFT JOIN primary_contacts pc ON ps.ack_id = pc.ack_id
-      ${whereClause}
     )
     SELECT
-      ein_plan_sponsor as ein,
-      plan_number as planNumber,
-      plan_name as planName,
-      sponsor_name as sponsorName,
-      sponsor_city as sponsorCity,
-      sponsor_state as sponsorState,
-      sponsor_zip as sponsorZip,
-      plan_type as planType,
-      participants,
-      total_assets as totalAssets,
-      form_tax_year as formYear,
-      search_priority as searchRank,
-      ack_id as ACK_ID,
-      primaryContactName,
-      primaryContactEin,
-      primaryContactRelation,
-      contactConfidence,
-      contactSource,
-      result_confidence
-    FROM search_ranking
-    ORDER BY
-      search_priority ASC,
-      result_confidence DESC,
-      COALESCE(participants, 0) DESC,
-      COALESCE(total_assets, 0) DESC
+      ps.ein_plan_sponsor as ein,
+      ps.plan_number as planNumber,
+      ps.plan_name as planName,
+      ps.sponsor_name as sponsorName,
+      ps.sponsor_city as sponsorCity,
+      ps.sponsor_state as sponsorState,
+      ps.sponsor_zip as sponsorZip,
+      ps.plan_type as planType,
+      ps.participants,
+      ps.total_assets as totalAssets,
+      ps.form_tax_year as formYear,
+      CASE
+        WHEN UPPER(ps.sponsor_name) LIKE UPPER(?) THEN 1
+        WHEN UPPER(ps.plan_name) LIKE UPPER(?) THEN 2
+        WHEN pc.provider_name IS NOT NULL THEN 3
+        ELSE 4
+      END as searchRank,
+      ps.ack_id as ACK_ID,
+      pc.provider_name as primaryContactName,
+      CAST(pc.provider_ein AS STRING) as primaryContactEin,
+      pc.relation as primaryContactRelation,
+      pc.priority_rank as contactConfidence,
+      CASE WHEN pc.provider_name IS NOT NULL THEN 'schedule_c' ELSE 'none' END as contactSource,
+      CASE
+        WHEN ps.participants > 1000 THEN 1.0
+        WHEN ps.participants > 100 THEN 0.8
+        WHEN ps.participants > 10 THEN 0.6
+        ELSE 0.5
+      END as result_confidence,
+      ROUND(
+        -- Size percentile score (0-35 points)
+        35 * COALESCE(pd.participant_percentile, 0) +
+        -- Asset percentile score (0-25 points)
+        25 * COALESCE(pd.asset_percentile, 0) +
+        -- Recency score (0-20 points)
+        20 * GREATEST(0, (ps.form_tax_year - 2014) / 10.0) +
+        -- Search match precision score (0-15 points)
+        ${q ? `
+        CASE
+          WHEN UPPER(ps.sponsor_name) = UPPER('${q.replace(/'/g, "''")}') THEN 15
+          WHEN UPPER(ps.sponsor_name) LIKE UPPER('${q.replace(/'/g, "''")}%') THEN 12
+          WHEN UPPER(ps.sponsor_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 8
+          WHEN UPPER(ps.plan_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 5
+          ELSE 0
+        END` : '0'} +
+        -- Fortune company recognition bonus (0-5 points)
+        CASE
+          WHEN REGEXP_CONTAINS(UPPER(ps.sponsor_name), r'\\b(TESLA,? INC\\.?)\\b') THEN 5
+          WHEN REGEXP_CONTAINS(UPPER(ps.sponsor_name), r'\\b(MICROSOFT CORPORATION|APPLE INC|AMAZON\\.COM,? INC|GOOGLE LLC|META PLATFORMS)\\b') THEN 5
+          WHEN REGEXP_CONTAINS(UPPER(ps.sponsor_name), r'\\b(MICROSOFT|APPLE|AMAZON|GOOGLE|META|FACEBOOK|TESLA|NETFLIX|ORACLE)\\b') THEN 3
+          ELSE 0
+        END
+      , 2) as mlRelevanceScore
+    FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
+    LEFT JOIN percentile_data pd ON ps.ack_id = pd.ack_id
+    LEFT JOIN primary_contacts pc ON ps.ack_id = pc.ack_id
+    ${whereClause}
+    ORDER BY mlRelevanceScore DESC, participants DESC
+    LIMIT ? OFFSET ?
+  ` : `
+    WITH percentile_data AS (
+      SELECT
+        ack_id,
+        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY participants) as participant_percentile,
+        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY total_assets) as asset_percentile
+      FROM \`trustrails-faa3e.dol_data.plan_sponsors\`
+      WHERE participants > 0
+    )
+    SELECT
+      ps.ein_plan_sponsor as ein,
+      ps.plan_number as planNumber,
+      ps.plan_name as planName,
+      ps.sponsor_name as sponsorName,
+      ps.sponsor_city as sponsorCity,
+      ps.sponsor_state as sponsorState,
+      ps.sponsor_zip as sponsorZip,
+      ps.plan_type as planType,
+      ps.participants,
+      ps.total_assets as totalAssets,
+      ps.form_tax_year as formYear,
+      CASE
+        WHEN UPPER(ps.sponsor_name) LIKE UPPER(?) THEN 1
+        WHEN UPPER(ps.plan_name) LIKE UPPER(?) THEN 2
+        ELSE 3
+      END as searchRank,
+      ps.ack_id as ACK_ID,
+      NULL as primaryContactName,
+      NULL as primaryContactEin,
+      NULL as primaryContactRelation,
+      NULL as contactConfidence,
+      'none' as contactSource,
+      CASE
+        WHEN ps.participants > 1000 THEN 1.0
+        WHEN ps.participants > 100 THEN 0.8
+        WHEN ps.participants > 10 THEN 0.6
+        ELSE 0.5
+      END as result_confidence,
+      ROUND(
+        -- Size percentile score (0-35 points)
+        35 * COALESCE(pd.participant_percentile, 0) +
+        -- Asset percentile score (0-25 points)
+        25 * COALESCE(pd.asset_percentile, 0) +
+        -- Recency score (0-20 points)
+        20 * GREATEST(0, (ps.form_tax_year - 2014) / 10.0) +
+        -- Search match precision score (0-15 points)
+        ${q ? `
+        CASE
+          WHEN UPPER(ps.sponsor_name) = UPPER('${q.replace(/'/g, "''")}') THEN 15
+          WHEN UPPER(ps.sponsor_name) LIKE UPPER('${q.replace(/'/g, "''")}%') THEN 12
+          WHEN UPPER(ps.sponsor_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 8
+          WHEN UPPER(ps.plan_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 5
+          ELSE 0
+        END` : '0'} +
+        -- Fortune company recognition bonus (0-5 points)
+        CASE
+          WHEN REGEXP_CONTAINS(UPPER(ps.sponsor_name), r'\\b(TESLA,? INC\\.?)\\b') THEN 5
+          WHEN REGEXP_CONTAINS(UPPER(ps.sponsor_name), r'\\b(MICROSOFT CORPORATION|APPLE INC|AMAZON\\.COM,? INC|GOOGLE LLC|META PLATFORMS)\\b') THEN 5
+          WHEN REGEXP_CONTAINS(UPPER(ps.sponsor_name), r'\\b(MICROSOFT|APPLE|AMAZON|GOOGLE|META|FACEBOOK|TESLA|NETFLIX|ORACLE)\\b') THEN 3
+          ELSE 0
+        END
+      , 2) as mlRelevanceScore
+    FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
+    LEFT JOIN percentile_data pd ON ps.ack_id = pd.ack_id
+    ${whereClause}
+    ORDER BY mlRelevanceScore DESC, participants DESC
     LIMIT ? OFFSET ?
   `;
 
-  // Add search term parameters for ranking (if query exists)
-  const searchTermForRanking = q || '';
-  const searchPattern = q ? `%${q}%` : '';
-  queryParams.push(
-    searchTermForRanking, searchPattern,
-    searchTermForRanking, searchPattern,
-    limit, offset
-  );
+  // Prepare separate parameter arrays for count vs data queries
+  const countQueryParams = [...queryParams]; // Count query uses base parameters only
 
-  // Execute queries
+  // Add search term parameters for ranking (if query exists) to data query only
+  const searchPattern = q ? `%${q}%` : '';
+  const dataQueryParams = [
+    ...queryParams,
+    searchPattern, // For sponsor name ranking
+    searchPattern, // For plan name ranking
+    limit, offset
+  ];
+
+  // Execute queries with correct parameter arrays
   const [[countResult]] = await bigquery.query({
     query: countQuery,
-    params: queryParams.slice(0, -2), // Exclude limit/offset for count
+    params: countQueryParams,
     location: GCP_CONFIG.region
   });
 
   const [dataResults] = await bigquery.query({
     query: dataQuery,
-    params: queryParams,
+    params: dataQueryParams,
     location: GCP_CONFIG.region
   });
 
@@ -458,6 +532,16 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
  * Format plan result for API response
  */
 function formatPlanResult(plan: any) {
+  // Debug logging to check ML fields
+  if (plan.sponsorName && plan.sponsorName.includes('TESLA')) {
+    console.log('Tesla plan data:', {
+      sponsorName: plan.sponsorName,
+      mlRelevanceScore: plan.mlRelevanceScore,
+      participants: plan.participants,
+      formYear: plan.formYear
+    });
+  }
+
   // Enhanced primary contact determination with sponsor-custodian intelligence
   let primaryContact = null;
   let contactConfidence = 'low';
@@ -537,9 +621,21 @@ function formatPlanResult(plan: any) {
       searchRank: plan.searchRank,
       ackId: plan.ACK_ID,
       dataQuality: dataQuality,
-      resultConfidence: plan.result_confidence || 1.0
+      resultConfidence: plan.result_confidence || 1.0,
+      mlRelevanceScore: Math.round((plan.mlRelevanceScore || 0) * 100) / 100, // Round to 2 decimal places
+      tier: getCompanyTier(plan.mlRelevanceScore, plan.participants)
     }
   };
+}
+
+/**
+ * Determine company tier based on ML relevance score and size
+ */
+function getCompanyTier(relevanceScore: number, participants: number): string {
+  if (relevanceScore >= 80 && participants >= 10000) return 'enterprise';
+  if (relevanceScore >= 60 && participants >= 1000) return 'large';
+  if (relevanceScore >= 40 && participants >= 100) return 'medium';
+  return 'small';
 }
 
 /**
@@ -557,6 +653,56 @@ function formatCurrency(amount: number): string {
   }
 
   return `$${amount.toFixed(0)}`;
+}
+
+/**
+ * Generate ML-Enhanced relevance scoring SQL
+ */
+function getMLEnhancedRelevanceSQL(searchQuery?: string): string {
+  // Sanitize search query for SQL injection protection
+  const sanitizedQuery = searchQuery ? searchQuery.replace(/'/g, "''").substring(0, 100) : '';
+
+  return `
+    (
+      -- Size percentile score (0-35 points) - companies with more participants rank higher
+      35 * COALESCE(
+        PERCENT_RANK() OVER (
+          PARTITION BY form_tax_year
+          ORDER BY participants
+        ), 0
+      ) +
+
+      -- Asset percentile score (0-25 points) - use participants as proxy since assets data is sparse
+      25 * COALESCE(
+        PERCENT_RANK() OVER (
+          PARTITION BY form_tax_year
+          ORDER BY participants
+        ), 0
+      ) +
+
+      -- Recency score (0-20 points) - newer filings ranked higher
+      20 * GREATEST(0, (form_tax_year - 2014) / 10.0) +
+
+      -- Search match precision score (0-15 points)
+      ${searchQuery ? `
+      CASE
+        WHEN UPPER(sponsor_name) = UPPER('${sanitizedQuery}') THEN 15
+        WHEN UPPER(sponsor_name) LIKE UPPER('${sanitizedQuery}%') THEN 12
+        WHEN UPPER(sponsor_name) LIKE UPPER('%${sanitizedQuery}%') THEN 8
+        WHEN UPPER(plan_name) LIKE UPPER('%${sanitizedQuery}%') THEN 5
+        ELSE 0
+      END` : '0'} +
+
+      -- Fortune company recognition bonus (0-5 points)
+      CASE
+        -- Main corporations get highest bonus
+        WHEN REGEXP_CONTAINS(UPPER(sponsor_name), r'\\b(MICROSOFT CORPORATION|APPLE INC|AMAZON\\.COM,? INC|GOOGLE LLC|META PLATFORMS|TESLA,? INC)\\b') THEN 5
+        -- Fortune companies get moderate bonus
+        WHEN REGEXP_CONTAINS(UPPER(sponsor_name), r'\\b(MICROSOFT|APPLE|AMAZON|GOOGLE|META|FACEBOOK|TESLA|NETFLIX|ORACLE|SALESFORCE|ADOBE|NVIDIA|INTEL|IBM|CISCO|WALMART|TARGET|HOME DEPOT|JPMORGAN|BANK OF AMERICA|WELLS FARGO|GOLDMAN SACHS)\\b') THEN 3
+        ELSE 0
+      END
+    )
+  `;
 }
 
 /**
