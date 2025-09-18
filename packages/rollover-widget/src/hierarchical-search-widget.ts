@@ -656,7 +656,10 @@ export class TrustRailsHierarchicalSearch extends LitElement {
         ${this.searchMode === 'custodian-refinement' && this.selectedCustodian ? html`
           <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--tr-surface); border-radius: var(--tr-radius); border: 1px solid var(--tr-border);">
             <div style="font-size: 0.875rem; color: var(--tr-text-secondary);">
-              🏦 Showing ${this.selectedCustodian.name} plans for "<strong>${this.searchQuery}</strong>"
+              🏦 Searching within ${this.selectedCustodian.name}'s ${this.custodianStats?.planCount?.toLocaleString()} plans for "<strong>${this.searchQuery}</strong>"
+            </div>
+            <div style="font-size: 0.75rem; color: var(--tr-text-secondary); margin-top: 0.25rem;">
+              Only plans managed by ${this.selectedCustodian.name} are shown in these results.
             </div>
           </div>
         ` : ''}
@@ -893,30 +896,20 @@ export class TrustRailsHierarchicalSearch extends LitElement {
         return custodianData[custodianKey];
       }
 
-      // For other custodians, try the API
+      // For other custodians, try the API with custodian filtering to get count
       const response = await fetch(
-        `${this.apiEndpoint}/searchPlans?q=${encodeURIComponent(custodianName)}&limit=5&force_bigquery=true`
+        `${this.apiEndpoint}/searchPlans?custodian=${encodeURIComponent(custodianName)}&limit=1&force_bigquery=true`
       );
 
       if (!response.ok) throw new Error('Failed to get custodian stats');
 
       const data = await response.json();
-      const results = data.results || [];
 
-      // Look for a custodian result (marked with isCustodian: true)
-      const custodianResult = results.find((r: any) => r.isCustodian);
-      if (custodianResult) {
+      // Use the total count from pagination to get the actual number of plans
+      if (data.pagination?.total > 0) {
         return {
-          planCount: custodianResult.participants || 0, // participants field contains plan count for custodians
-          marketShare: custodianResult.marketShare || 0
-        };
-      }
-
-      // Estimate based on search results
-      if (results.length > 0) {
-        return {
-          planCount: Math.max(data.pagination?.total || results.length, 5),
-          marketShare: 0.1
+          planCount: data.pagination.total,
+          marketShare: 0.1 // Placeholder market share
         };
       }
 
@@ -941,10 +934,9 @@ export class TrustRailsHierarchicalSearch extends LitElement {
 
     try {
       const offset = loadMore ? this.currentOffset : 0;
-      // Just search for the employer name, we'll filter by custodian on the frontend
-      // This is temporary until we have proper custodian filtering in the API
+      // Search with custodian filtering using the new API parameter
       const response = await fetch(
-        `${this.apiEndpoint}/searchPlans?q=${encodeURIComponent(this.searchQuery)}&limit=${this.resultsPerPage * 3}&offset=${offset}&force_bigquery=true`
+        `${this.apiEndpoint}/searchPlans?q=${encodeURIComponent(this.searchQuery)}&custodian=${encodeURIComponent(this.selectedCustodian.name)}&limit=${this.resultsPerPage}&offset=${offset}&force_bigquery=true`
       );
 
       if (!response.ok) throw new Error('Search failed');
@@ -952,26 +944,23 @@ export class TrustRailsHierarchicalSearch extends LitElement {
       const data = await response.json();
       const newResults = data.results || [];
 
-      // Filter out custodian results, only show actual plans
-      const planResults = newResults.filter((r: any) => !r.isCustodian);
-
       if (loadMore) {
-        this.searchResults = [...this.searchResults, ...planResults];
+        this.searchResults = [...this.searchResults, ...newResults];
       } else {
-        this.searchResults = planResults;
+        this.searchResults = newResults;
       }
 
       // Handle totalCount from API response
       if (data.totalCount !== undefined) {
         this.totalResults = data.totalCount;
       } else {
-        this.totalResults = planResults.length === this.resultsPerPage
-          ? this.currentOffset + planResults.length + 1
-          : this.currentOffset + planResults.length;
+        this.totalResults = newResults.length === this.resultsPerPage
+          ? this.currentOffset + newResults.length + 1
+          : this.currentOffset + newResults.length;
       }
 
-      this.currentOffset = offset + planResults.length;
-      this.hasMoreResults = planResults.length === this.resultsPerPage &&
+      this.currentOffset = offset + newResults.length;
+      this.hasMoreResults = newResults.length === this.resultsPerPage &&
                             (data.totalCount === undefined || this.currentOffset < this.totalResults);
 
       if (this.searchResults.length === 0 && !loadMore) {

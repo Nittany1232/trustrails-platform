@@ -44,6 +44,7 @@ export const searchPlans: HttpFunction = async (req, res) => {
       state,    // State abbreviation
       city,     // City name
       type,     // Plan type (401k, 403b, etc)
+      custodian, // Custodian/provider name to filter by
       limit = '20',
       offset = '0',
       force_bigquery = 'false'  // Force BigQuery instead of Firestore cache
@@ -54,14 +55,14 @@ export const searchPlans: HttpFunction = async (req, res) => {
     const searchOffset = parseInt(offset) || 0;
 
     // Check if we need any search criteria
-    if (!q && !ein && !state && !city) {
+    if (!q && !ein && !state && !city && !custodian) {
       return res.status(400).set(corsHeaders).json({
-        error: 'At least one search parameter required (q, ein, state, or city)'
+        error: 'At least one search parameter required (q, ein, state, city, or custodian)'
       });
     }
 
     // Create cache key
-    const cacheKey = JSON.stringify({ q, ein, state, city, type, limit, offset });
+    const cacheKey = JSON.stringify({ q, ein, state, city, type, custodian, limit, offset });
 
     // Check memory cache first
     const cached = searchCache.get(cacheKey);
@@ -75,11 +76,11 @@ export const searchPlans: HttpFunction = async (req, res) => {
     let searchMethod = '';
     const forceBigQuery = force_bigquery === 'true';
 
-    // Choose search method based on force_bigquery flag
-    if (forceBigQuery) {
-      // Force BigQuery search (for testing)
+    // Choose search method based on force_bigquery flag or custodian filtering
+    if (forceBigQuery || custodian) {
+      // Force BigQuery search (for testing) or custodian filtering (requires BigQuery join)
       searchMethod = 'bigquery';
-      const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
+      const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, custodian, limit: searchLimit, offset: searchOffset });
       results = bigQueryResults.results;
       totalCount = bigQueryResults.totalCount;
     } else if ((q || ein) && searchLimit <= 20) {
@@ -90,14 +91,14 @@ export const searchPlans: HttpFunction = async (req, res) => {
       // Fall back to BigQuery if no results from Firestore
       if (results.length === 0) {
         searchMethod = 'bigquery';
-        const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
+        const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, custodian, limit: searchLimit, offset: searchOffset });
         results = bigQueryResults.results;
         totalCount = bigQueryResults.totalCount;
       }
     } else {
       // Use BigQuery for complex or large queries
       searchMethod = 'bigquery';
-      const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, limit: searchLimit, offset: searchOffset });
+      const bigQueryResults = await searchBigQuery({ q, ein, state, city, type, custodian, limit: searchLimit, offset: searchOffset });
       results = bigQueryResults.results;
       totalCount = bigQueryResults.totalCount;
     }
@@ -115,7 +116,8 @@ export const searchPlans: HttpFunction = async (req, res) => {
       metadata: {
         searchMethod,
         cached: false,
-        processingTime: `${Date.now() - Date.now()}ms`
+        processingTime: `${Date.now() - Date.now()}ms`,
+        custodianFilter: custodian || null
       }
     };
 
@@ -254,14 +256,14 @@ async function searchFirestore(params: any): Promise<any[]> {
  * Search BigQuery (comprehensive, slower)
  */
 async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount: number }> {
-  const { q, ein, state, city, type, limit, offset } = params;
+  const { q, ein, state, city, type, custodian, limit, offset } = params;
 
   // Build SQL query
   let whereConditions: string[] = [];
   const queryParams: any[] = [];
 
-  // Include plans with participants data OR extracted sponsors (some may not have participant counts)
-  whereConditions.push('(ps.participants > 0 OR ps.extracted_from_plan_name = TRUE)');
+  // Include plans with participants data
+  whereConditions.push('ps.participants > 0');
 
   if (ein) {
     whereConditions.push('CAST(ps.ein_plan_sponsor AS STRING) = ?');
@@ -283,6 +285,16 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
     queryParams.push(mapPlanTypeQuery(type));
   }
 
+  if (custodian) {
+    // Filter by custodian name - must join with schedule_c_custodians
+    whereConditions.push(`EXISTS (
+      SELECT 1 FROM \`trustrails-faa3e.dol_data.schedule_c_custodians\` cc
+      WHERE cc.ack_id = ps.ack_id
+        AND UPPER(cc.provider_other_name) LIKE UPPER(?)
+    )`);
+    queryParams.push(`%${custodian}%`);
+  }
+
   if (q && q.length > 2) {
     // Enhanced sponsor-first search with fuzzy matching
     const searchTerm = q.trim();
@@ -293,11 +305,6 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
       UPPER(ps.sponsor_name) LIKE UPPER(?) OR
       -- Plan name matches (secondary)
       UPPER(ps.plan_name) LIKE UPPER(?) OR
-      -- Search tokens for fast partial matching
-      EXISTS (
-        SELECT 1 FROM UNNEST(ps.search_tokens) as token
-        WHERE UPPER(token) LIKE UPPER(?)
-      ) OR
       -- Custodian name matches (for custodian-first searches)
       EXISTS (
         SELECT 1 FROM \`trustrails-faa3e.dol_data.schedule_c_custodians\` cc
@@ -310,7 +317,6 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
     queryParams.push(
       `%${searchTerm}%`,  // Sponsor name contains
       `%${searchTerm}%`,  // Plan name contains
-      `%${searchTerm}%`,  // Search tokens contain
       `%${searchTerm}%`   // Custodian name contains
     );
   }
@@ -380,10 +386,11 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
           WHEN pc.provider_name IS NOT NULL THEN 3                            -- Has custodian mapping
           ELSE 4                                                              -- Other matches
         END as search_priority,
-        -- Confidence scoring
+        -- Confidence scoring - use participants as a proxy for data quality
         CASE
-          WHEN ps.extracted_from_plan_name = FALSE AND ps.participants > 0 THEN ps.confidence_score
-          WHEN ps.extracted_from_plan_name = TRUE THEN ps.confidence_score * 0.8
+          WHEN ps.participants > 1000 THEN 1.0
+          WHEN ps.participants > 100 THEN 0.8
+          WHEN ps.participants > 10 THEN 0.6
           ELSE 0.5
         END as result_confidence
       FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
@@ -409,9 +416,7 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
       primaryContactRelation,
       contactConfidence,
       contactSource,
-      result_confidence,
-      extracted_from_plan_name,
-      file_source
+      result_confidence
     FROM search_ranking
     ORDER BY
       search_priority ASC,
@@ -422,10 +427,11 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
   `;
 
   // Add search term parameters for ranking (if query exists)
-  const searchTermForRanking = q || null;
+  const searchTermForRanking = q || '';
+  const searchPattern = q ? `%${q}%` : '';
   queryParams.push(
-    searchTermForRanking, searchTermForRanking ? `%${searchTermForRanking}%` : null,
-    searchTermForRanking, searchTermForRanking ? `%${searchTermForRanking}%` : null,
+    searchTermForRanking, searchPattern,
+    searchTermForRanking, searchPattern,
     limit, offset
   );
 
@@ -458,11 +464,13 @@ function formatPlanResult(plan: any) {
   let contactGuidance = '';
   let dataQuality = 'standard';
 
-  // Set data quality indicator
-  if (plan.extracted_from_plan_name) {
-    dataQuality = 'extracted';
-  } else if (plan.file_source === 'migrated_from_retirement_plans') {
+  // Set data quality indicator based on available data
+  if (plan.participants > 1000) {
     dataQuality = 'verified';
+  } else if (plan.participants > 100) {
+    dataQuality = 'standard';
+  } else {
+    dataQuality = 'limited';
   }
 
   if (plan.primaryContactName) {
@@ -525,13 +533,11 @@ function formatPlanResult(plan: any) {
     contactConfidence: contactConfidence,
     contactGuidance: contactGuidance,
     metadata: {
-      lastUpdated: plan.lastUpdated || plan.formYear,
+      lastUpdated: plan.formYear,
       searchRank: plan.searchRank,
       ackId: plan.ACK_ID,
       dataQuality: dataQuality,
-      resultConfidence: plan.result_confidence || 1.0,
-      extractedFromPlanName: plan.extracted_from_plan_name || false,
-      fileSource: plan.file_source || 'unknown'
+      resultConfidence: plan.result_confidence || 1.0
     }
   };
 }
