@@ -281,8 +281,8 @@
 <body>
   <div class="demo-container">
     <div class="demo-header">
-      <h1>🎨 TrustRails Hierarchical Search Widget</h1>
-      <p>Plain, themeable widget for 401(k) custodian search - Better UX than Capitalize</p>
+      <h1>🎨 TrustRails ML-Enhanced Hierarchical Search Widget</h1>
+      <p>AI-powered 401(k) search with Fortune company recognition → KYC Verification → DocuSign</p>
     </div>
 
     <!-- Theme Controls -->
@@ -351,7 +351,15 @@
         </div>
         <div class="feature-item">
           <span class="feature-icon">✅</span>
-          <span>Real-time BigQuery search</span>
+          <span>ML-enhanced Fortune company search</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">✅</span>
+          <span>Integrated KYC verification</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">✅</span>
+          <span>DocuSign integration ready</span>
         </div>
       </div>
     </div>
@@ -360,20 +368,26 @@
     <div class="demo-sections">
       <!-- Live Widget Demo -->
       <div class="demo-section">
-        <h2 class="section-title">Live Demo</h2>
+        <h2 class="section-title">Live Demo - ML-Enhanced Fortune Search</h2>
         <p class="section-description">
-          Try the widget with our BigQuery backend (84,760 plans, 68,316 sponsors)
+          Try searching for Fortune companies like "Microsoft", "Apple", or "Amazon" to see AI-powered relevance scoring, tier badges, and enhanced result prioritization
         </p>
 
         <div id="widget-container" class="widget-wrapper theme-default">
           <trustrails-hierarchical-search
             api-endpoint="http://localhost:8082"
+            auth-endpoint="http://localhost:3002/api/widget/auth"
+            user-email="test.user@example.com"
+            partner-id="ad6fe4e9-632b-4ba4-bd3f-dbde109d6ee8"
+            api-key="tr_test_pk_fTeq75rNL0c8gyKcTkrJIIjc5QaPYR4R"
+            persona-template-id="itmpl_8432ukrCiAegZZTRnvc6mVi7xvgG"
+            persona-environment-id="env_4edUSdBFUKZ27VKgaPx3Nta3DtaP"
             debug="true">
           </trustrails-hierarchical-search>
         </div>
 
         <div class="event-log" id="event-log">
-          <div class="event-entry">Widget initialized and ready</div>
+          <div class="event-entry">Widget initialized and ready for KYC flow demo</div>
         </div>
       </div>
 
@@ -398,10 +412,12 @@
   }
 &lt;/style&gt;
 
-<span class="code-comment">&lt;!-- 3. Place the widget --&gt;</span>
+<span class="code-comment">&lt;!-- 3. Place the widget with KYC --&gt;</span>
 &lt;trustrails-hierarchical-search
   api-endpoint="https://api.trustrails.com"
-  partner-id="your-partner-id"&gt;
+  partner-id="your-partner-id"
+  persona-template-id="itmpl_xxx"
+  persona-environment-id="env_prod_xxx"&gt;
 &lt;/trustrails-hierarchical-search&gt;
         </div>
 
@@ -435,23 +451,45 @@ widget.addEventListener('plan-selected', (e) => {
       </div>
     </div>
 
-    <!-- Scrollable Embedded Widget Demo -->
+    <!-- KYC Flow Demo -->
     <div class="demo-section" style="margin-bottom: 2rem;">
-      <h2 class="section-title">📱 Embedded Widget with Fixed Height</h2>
+      <h2 class="section-title">🔐 ML-Enhanced Search + KYC Integration</h2>
       <p class="section-description">
-        Perfect for embedded contexts where the widget shouldn't grow the page. Shows 5 results initially with internal scrolling for more.
+        Experience the complete rollover flow with AI-powered search that recognizes Fortune companies, plus integrated Persona KYC verification.
       </p>
+
+      <div style="background: #f0f9ff; border-left: 4px solid #0284c7; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+        <strong>🎯 ML Enhancement Features:</strong>
+        <ul style="margin: 0.5rem 0 0 1rem; padding-left: 1rem;">
+          <li><strong>Fortune Company Recognition:</strong> Companies like Microsoft, Apple, Amazon get ⭐ Fortune badges</li>
+          <li><strong>Smart Tier Classification:</strong> Enterprise (green), Large (blue), Medium (orange) company borders</li>
+          <li><strong>AI Relevance Scoring:</strong> Results ranked by ML-calculated relevance scores (🎯 high, 📍 medium, 📌 low)</li>
+          <li><strong>Intelligent Sorting:</strong> Fortune companies and large enterprises appear first</li>
+        </ul>
+      </div>
+
+      <div style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+        <strong>💡 Try These Searches:</strong>
+        <ol style="margin: 0.5rem 0 0 1rem; padding-left: 1rem;">
+          <li><strong>"Microsoft"</strong> - See ⭐ Fortune badge + enterprise styling</li>
+          <li><strong>"Tesla"</strong> - Fortune company with high ML score</li>
+          <li><strong>"Fidelity"</strong> - Provider search with ML enhancement</li>
+          <li>Select any plan to experience the complete KYC flow</li>
+        </ol>
+      </div>
 
       <div class="widget-wrapper theme-default">
         <trustrails-hierarchical-search
           api-endpoint="http://localhost:8082"
+          persona-template-id="itmpl_8432ukrCiAegZZTRnvc6mVi7xvgG"
+          persona-environment-id="env_4edUSdBFUKZ27VKgaPx3Nta3DtaP"
           scrollable="true"
           debug="true">
         </trustrails-hierarchical-search>
       </div>
 
-      <div style="background: #f0f9ff; border-left: 4px solid #0284c7; padding: 1rem; margin-top: 1rem; border-radius: 4px;">
-        <strong>💡 Tip:</strong> The <code>scrollable</code> attribute limits the widget to 400px height with internal scrolling. This prevents the widget from expanding and affecting your page layout.
+      <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 1rem; margin-top: 1rem; border-radius: 4px;">
+        <strong>⚠️ Sandbox Mode:</strong> This demo uses Persona's sandbox environment. In sandbox mode, you can use test data to complete the verification flow without real identity verification.
       </div>
     </div>
 
@@ -494,9 +532,19 @@ widget.addEventListener('plan-selected', (e) => {
             <td style="padding: 0.75rem;">100KB+ with React</td>
           </tr>
           <tr style="border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 0.75rem;">Confidence Indicators</td>
-            <td style="padding: 0.75rem; color: #059669;">✅ Shows data quality</td>
-            <td style="padding: 0.75rem;">No indicators</td>
+            <td style="padding: 0.75rem;">ML Enhancement</td>
+            <td style="padding: 0.75rem; color: #059669;">✅ AI relevance scoring + Fortune recognition</td>
+            <td style="padding: 0.75rem;">No ML features</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 0.75rem;">KYC Integration</td>
+            <td style="padding: 0.75rem; color: #059669;">✅ Built-in Persona verification</td>
+            <td style="padding: 0.75rem;">Manual process</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 0.75rem;">Complete Flow</td>
+            <td style="padding: 0.75rem; color: #059669;">✅ Search → KYC → DocuSign</td>
+            <td style="padding: 0.75rem;">Search only</td>
           </tr>
         </tbody>
       </table>
@@ -536,7 +584,14 @@ widget.addEventListener('plan-selected', (e) => {
       if (plan.primaryContact?.name) {
         logEvent(`Custodian: ${plan.primaryContact.name}`);
       }
+      if (plan.ein) {
+        logEvent(`EIN: ${plan.ein}`);
+      }
     });
+
+    // Plan selection is the main event we listen to
+    // The Persona flow happens inside the widget component
+    // following the embedded flow pattern from the documentation
 
     function logEvent(message) {
       const entry = document.createElement('div');
@@ -552,7 +607,7 @@ widget.addEventListener('plan-selected', (e) => {
     }
 
     // Log initial load
-    logEvent('Widget initialized and ready');
+    logEvent('Widget initialized and ready for KYC flow demo');
   </script>
 </body>
 </html>

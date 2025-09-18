@@ -275,10 +275,10 @@
   <div class="container">
     <header>
       <h1>🧪 Widget Auth & Search Test</h1>
-      <p class="subtitle">Test authentication with microservice and enhanced sponsor-custodian search functionality</p>
-      <div style="margin-top: 15px; padding: 10px; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
-        <p style="font-size: 12px; color: #1e40af; margin: 0; font-weight: 500;">🎯 NEW: Sponsor-to-Custodian Mapping</p>
-        <p style="font-size: 11px; color: #1e40af; margin: 4px 0 0 0;">Test the "Microsoft 1990" employee search scenario - find employers and their 401k custodians</p>
+      <p class="subtitle">Test authentication with microservice and ML-enhanced search functionality</p>
+      <div style="margin-top: 15px; padding: 10px; background: #dcfce7; border-radius: 8px; border-left: 4px solid #10b981;">
+        <p style="font-size: 12px; color: #065f46; margin: 0; font-weight: 600;">✨ NEW: ML-Enhanced Search with Fortune Company Detection</p>
+        <p style="font-size: 11px; color: #065f46; margin: 4px 0 0 0;">Search results now include ML relevance scoring, Fortune company badges, and improved ranking. Apple Inc now ranks #1 for "Apple" searches!</p>
       </div>
     </header>
 
@@ -390,13 +390,13 @@
               </button>
             </div>
 
-            <!-- NEW: Sponsor Search Section -->
-            <div style="margin-top: 20px; padding: 15px; background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px;">
-              <label style="font-size: 12px; font-weight: 600; color: #1e40af; margin-bottom: 8px; display: block;">
-                🎯 NEW: Sponsor-to-Custodian Mapping Tests
+            <!-- NEW: ML-Enhanced Fortune Company Search Section -->
+            <div style="margin-top: 20px; padding: 15px; background: #dcfce7; border: 2px solid #10b981; border-radius: 8px;">
+              <label style="font-size: 12px; font-weight: 600; color: #065f46; margin-bottom: 8px; display: block;">
+                ✨ NEW: ML-Enhanced Fortune Company Search
               </label>
-              <p style="font-size: 11px; color: #1e40af; margin-bottom: 10px; line-height: 1.4;">
-                Test the "Microsoft 1990" employee search scenario - find employers and their 401k custodians
+              <p style="font-size: 11px; color: #065f46; margin-bottom: 10px; line-height: 1.4;">
+                Test Fortune company detection with ML relevance scoring. Fortune companies now get ⭐ badges and rank higher!
               </p>
               <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px;">
                 <button class="btn btn-secondary sponsor-search" data-query="Microsoft">
@@ -419,9 +419,9 @@
                 </button>
               </div>
               <div style="margin-top: 10px;">
-                <label style="font-size: 11px; color: #6b7280;">Historical Test (if data available):</label>
-                <button class="btn btn-secondary sponsor-search" data-query="Microsoft Corporation" style="margin-top: 5px; width: 100%; font-size: 11px;">
-                  🎯 "Microsoft 1990" Employee Scenario
+                <label style="font-size: 11px; color: #065f46;">Premium ML Test Queries:</label>
+                <button class="btn btn-secondary sponsor-search" data-query="Apple Inc" style="margin-top: 5px; width: 100%; font-size: 11px; background: #f0fdf4; color: #166534;">
+                  ✨ "Apple" - Should rank Apple Inc #1 (ML Enhancement Demo)
                 </button>
               </div>
             </div>
@@ -703,10 +703,10 @@
       }
     }
 
-    // NEW: Enhanced sponsor search test function
+    // NEW: Enhanced Fortune company search test function
     async function testSponsorSearch(sponsorQuery) {
-      logEvent('SPONSOR', `🎯 Testing sponsor-to-custodian mapping for: "${sponsorQuery}"`);
-      logEvent('SPONSOR', 'This tests the "Microsoft 1990" employee search scenario', 'info');
+      logEvent('ML-SEARCH', `✨ Testing ML-enhanced search for: "${sponsorQuery}"`);
+      logEvent('ML-SEARCH', 'This tests Fortune company detection and ML relevance scoring', 'info');
 
       try {
         // First authenticate
@@ -718,7 +718,7 @@
         searchUrl.searchParams.append('limit', '10');
         searchUrl.searchParams.append('force_bigquery', 'true'); // Force BigQuery for sponsor data
 
-        logEvent('SPONSOR', 'Forcing BigQuery to access full sponsor-custodian dataset');
+        logEvent('ML-SEARCH', 'Forcing BigQuery to access ML-enhanced relevance data');
 
         const response = await fetch(searchUrl.toString(), {
           method: 'GET',
@@ -731,61 +731,68 @@
 
         if (response.ok) {
           const resultCount = data.results?.length || 0;
-          logEvent('SPONSOR', `Found ${resultCount} sponsor results`, resultCount > 0 ? 'success' : 'warning');
+          logEvent('ML-SEARCH', `Found ${resultCount} ML-enhanced results`, resultCount > 0 ? 'success' : 'warning');
 
           if (data.results && data.results.length > 0) {
-            // Analyze results for sponsor-custodian mapping
-            let sponsorFound = false;
-            let custodianMapped = false;
+            // Analyze results for ML enhancements
+            let fortuneCompanyFound = false;
+            let highMLScoreFound = false;
+            let avgMLScore = 0;
 
             data.results.forEach((result, index) => {
               if (index < 3) { // Show first 3 results
                 const company = result.company?.name || result.sponsorName || 'Unknown';
-                const custodian = result.primaryContact?.name || 'Not mapped';
-                const confidence = result.contactConfidence || 'unknown';
+                const mlScore = result.metadata?.mlRelevanceScore || 0;
+                const tier = result.metadata?.tier || 'unknown';
                 const participants = result.planDetails?.participants || 'N/A';
                 const assets = result.planDetails?.assetFormatted || 'N/A';
-                const dataQuality = result.metadata?.dataQuality || 'unknown';
+                const confidence = result.metadata?.resultConfidence || 'unknown';
 
-                logEvent('SPONSOR', `${index + 1}. ${company}`, 'success');
-                logEvent('SPONSOR', `   Plan: ${result.planName}`);
-                logEvent('SPONSOR', `   Custodian: ${custodian} (${confidence} confidence)`);
-                logEvent('SPONSOR', `   Participants: ${participants}, Assets: ${assets}`);
-                logEvent('SPONSOR', `   Data Quality: ${dataQuality}`);
+                logEvent('ML-SEARCH', `${index + 1}. ${company} ${tier === 'enterprise' ? '⭐' : ''}`, 'success');
+                logEvent('ML-SEARCH', `   Plan: ${result.planName}`);
+                logEvent('ML-SEARCH', `   ML Score: ${Math.round(mlScore)}/100, Tier: ${tier}`);
+                logEvent('ML-SEARCH', `   Participants: ${participants}, Assets: ${assets}`);
+                logEvent('ML-SEARCH', `   Confidence: ${Math.round(confidence * 100)}%`);
 
-                if (company.toLowerCase().includes(sponsorQuery.toLowerCase())) {
-                  sponsorFound = true;
+                if (tier === 'enterprise') {
+                  fortuneCompanyFound = true;
                 }
-                if (custodian !== 'Not mapped' && custodian !== 'unknown') {
-                  custodianMapped = true;
+                if (mlScore >= 70) {
+                  highMLScoreFound = true;
                 }
+                avgMLScore += mlScore;
               }
             });
 
-            // Summary of sponsor-custodian mapping test
-            logEvent('SPONSOR', '--- SPONSOR-CUSTODIAN MAPPING TEST RESULTS ---', 'info');
-            logEvent('SPONSOR', `✅ Sponsor found: ${sponsorFound ? 'YES' : 'NO'}`, sponsorFound ? 'success' : 'warning');
-            logEvent('SPONSOR', `✅ Custodian mapped: ${custodianMapped ? 'YES' : 'NO'}`, custodianMapped ? 'success' : 'warning');
-            logEvent('SPONSOR', `✅ Search method: ${data.metadata?.searchMethod || 'unknown'}`);
-            logEvent('SPONSOR', `✅ Processing time: ${data.metadata?.processingTime || 'unknown'}`);
+            avgMLScore = avgMLScore / Math.min(3, data.results.length);
 
-            if (sponsorFound && custodianMapped) {
-              logEvent('SPONSOR', '🎉 SUCCESS: "Microsoft 1990" scenario working!', 'success');
-            } else if (sponsorFound && !custodianMapped) {
-              logEvent('SPONSOR', '⚠️ PARTIAL: Found sponsor but no custodian mapping', 'warning');
+            // Summary of ML enhancement test
+            logEvent('ML-SEARCH', '--- ML-ENHANCED SEARCH TEST RESULTS ---', 'info');
+            logEvent('ML-SEARCH', `✅ Fortune company found: ${fortuneCompanyFound ? 'YES ⭐' : 'NO'}`, fortuneCompanyFound ? 'success' : 'warning');
+            logEvent('ML-SEARCH', `✅ High ML scores (70+): ${highMLScoreFound ? 'YES 🎯' : 'NO'}`, highMLScoreFound ? 'success' : 'warning');
+            logEvent('ML-SEARCH', `✅ Average ML score: ${Math.round(avgMLScore)}/100`);
+            logEvent('ML-SEARCH', `✅ Total results: ${data.results.length}`);
+            logEvent('ML-SEARCH', `✅ Processing time: ${data.metadata?.processingTime || 'unknown'}`);
+
+            if (fortuneCompanyFound && highMLScoreFound) {
+              logEvent('ML-SEARCH', '🎉 SUCCESS: ML-enhanced search working perfectly!', 'success');
+            } else if (fortuneCompanyFound) {
+              logEvent('ML-SEARCH', '✨ GOOD: Fortune companies detected, ML scores could be higher', 'success');
+            } else if (highMLScoreFound) {
+              logEvent('ML-SEARCH', '📍 PARTIAL: High ML scores but no Fortune companies', 'warning');
             } else {
-              logEvent('SPONSOR', '❌ FAILED: May need historical data (2020-2023)', 'error');
+              logEvent('ML-SEARCH', '⚠️ NEEDS IMPROVEMENT: Low ML scores, check relevance algorithm', 'warning');
             }
 
           } else {
-            logEvent('SPONSOR', '❌ No sponsor results found', 'error');
-            logEvent('SPONSOR', 'This may indicate need for historical DOL data', 'warning');
+            logEvent('ML-SEARCH', '❌ No ML-enhanced results found', 'error');
+            logEvent('ML-SEARCH', 'This may indicate issues with the ML relevance service', 'warning');
           }
         } else {
           throw new Error(data.error || 'Sponsor search failed');
         }
       } catch (error) {
-        logEvent('SPONSOR', `Test failed: ${error.message}`, 'error');
+        logEvent('ML-SEARCH', `Test failed: ${error.message}`, 'error');
       }
     }
 
@@ -844,12 +851,12 @@
       });
     });
 
-    // NEW: Sponsor search buttons
+    // NEW: ML-enhanced Fortune company search buttons
     document.querySelectorAll('.sponsor-search').forEach(button => {
       button.addEventListener('click', (e) => {
         const query = e.target.getAttribute('data-query');
         elements.testSearchInput.value = query;
-        logEvent('SPONSOR', `Testing sponsor search: ${query}`);
+        logEvent('ML-SEARCH', `Testing ML-enhanced search: ${query}`);
         testSponsorSearch(query);
       });
     });
