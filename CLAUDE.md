@@ -16,22 +16,67 @@ npm run build
 npm run test
 ```
 
+## 🚀 Development Environment Setup
+
+### Prerequisites
+Ensure you have the Firebase admin credentials at:
+```
+/home/stock1232/projects/trustrails/credentials/firebase-admin.json
+```
+
+### Complete Development Stack Startup
+
+**After terminal restart, use this single script to start all services:**
+
+```bash
+# 1. Start Development Proxy (runs on port 8091)
+cd /home/stock1232/projects/trustrails-platform/packages/dev-proxy
+npm run build && npm start &
+
+# 2. Start Plan Search API (auto-detected by proxy)
+cd /home/stock1232/projects/trustrails-platform/services/plan-search-api/standalone-search
+GOOGLE_APPLICATION_CREDENTIALS=/home/stock1232/projects/trustrails/credentials/firebase-admin.json npm run dev &
+
+# 3. Start Widget Demo (runs on port 3001)
+cd /home/stock1232/projects/trustrails-platform/apps/widget-demo
+npm run dev &
+
+# 4. Start TrustRails App with Auth Service (runs on port 3002)
+cd /home/stock1232/projects/trustrails
+SKIP_RATE_LIMIT=true PORT=3002 npm run dev &
+
+# 5. Access everything through the proxy
+echo "🚀 All services started!"
+echo "📱 Widget Demo: http://localhost:3001"
+echo "🔍 API Proxy: http://localhost:8091"
+echo "🔐 Auth Service: http://localhost:3002"
+```
+
+### Service Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Widget Demo   │    │   Dev Proxy      │    │  TrustRails App │
+│   Port 3001     │◄──►│   Port 8091      │◄──►│   Port 3002     │
+└─────────────────┘    │                  │    │  (Auth Service) │
+                       │  Routes to:      │    └─────────────────┘
+                       │  - Plan Search   │              ▲
+                       │  - Auth APIs     │              │
+                       │  - Widget APIs   │              │
+                       └──────────────────┘              │
+                                │                         │
+                                ▼                         │
+                       ┌─────────────────┐                │
+                       │ Plan Search API │                │
+                       │ (Dynamic Port)  │────────────────┘
+                       └─────────────────┘
+```
+
 ### ⚠️ Widget Authentication Service
 
 **Current Location**: The widget authentication endpoints are currently part of the main TrustRails app at `/home/stock1232/projects/trustrails/`
 - Auth endpoint: `/app/api/widget/auth/route.ts`
 - Account creation: `/app/api/widget/create-account/route.ts`
-
-**To test widget with authentication:**
-```bash
-# Terminal 1: Run widget demo
-cd /home/stock1232/projects/trustrails-platform/apps/widget-demo
-npm run dev  # Runs on port 3001
-
-# Terminal 2: Run TrustRails app (provides auth service)
-cd /home/stock1232/projects/trustrails
-PORT=3002 npm run dev  # Must run on port 3002 for widget to find auth endpoints
-```
 
 **Future Architecture**: Widget auth should be extracted as a separate microservice in `services/widget-auth-service/` for better separation of concerns, scalability, and security isolation. See architecture recommendations below.
 
@@ -249,13 +294,48 @@ PLATFORM_WALLET_PRIVATE_KEY=0x...
 4. **FOLLOW** the authentication tier system
 5. **TEST** widget in demo app before deployment
 
+## 🤖 Claude Specialized Agents
+
+**Location**: `/home/stock1232/projects/trustrails-platform/.claude/agents/`
+
+We have 10 specialized Claude agents configured for different development tasks:
+
+### Available Agents
+
+1. **backend-fintech-nodejs** - Principal Backend Engineer for Node.js/TypeScript FinTech development
+2. **blockchain-ethereum-custody** - Blockchain Engineer specializing in Ethereum and digital asset custody
+3. **cloud-architect-gcp** - GCP Cloud Architect for distributed systems and infrastructure
+4. **devops-fintech-automation** - DevOps Engineer for FinTech automation and CI/CD
+5. **dol-data-processing-specialist** - DOL Data Processing Specialist for retirement plan data
+6. **fiduciary-aware-retirement-strategist** - Financial Professional specializing in ERISA compliance
+7. **frontend-react-fintech-viz** - Frontend Engineer for React and financial data visualization
+8. **principal-code-reviewer-typescript** - Principal Code Reviewer for TypeScript quality assurance
+9. **security-advisor-fintech-cloud** - Security Advisor for FinTech cloud infrastructure
+10. **ux-design-behavioral-finance** - UX Designer specializing in behavioral finance
+
+### Using Agents
+
+**In Claude Code**: Agents are automatically available via the Task tool. Simply describe your task and Claude will select the appropriate specialized agent.
+
+**Manual Configuration**: Agents are defined in `.claude/settings.local.json` and can be updated using:
+```bash
+cd /home/stock1232/projects/trustrails-platform
+python3 update-agents.py
+```
+
+**Examples**:
+- "Use the security agent to review this authentication flow"
+- "Have the DOL data specialist optimize this BigQuery query"
+- "Use the cloud architect to design this microservice deployment"
+
 ## 📞 Support
 
 For questions about:
 - **Monorepo structure**: Review Turborepo docs
 - **Widget development**: Check LitElement docs
-- **Authentication**: See security agent recommendations
-- **Data pipeline**: Review architecture agent design
+- **Authentication**: Use the `security-advisor-fintech-cloud` agent
+- **Data pipeline**: Use the `dol-data-processing-specialist` agent
+- **Cloud Architecture**: Use the `cloud-architect-gcp` agent
 
 ## 🎯 Next Steps
 
