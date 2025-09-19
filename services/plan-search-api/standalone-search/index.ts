@@ -330,15 +330,43 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
     ${whereClause}
   `;
 
-  // Optimized data query with ML-powered relevance scoring using CTE
+  // Enhanced data query with ML-powered relevance scoring using new DOL fields
   const dataQuery = custodian ? `
     WITH percentile_data AS (
       SELECT
         ack_id,
         PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY participants) as participant_percentile,
-        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY total_assets) as asset_percentile
+        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY total_assets) as asset_percentile,
+        -- Enhanced: Active participant ratio for engagement scoring
+        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY
+          SAFE_DIVIDE(active_participants, NULLIF(participants, 0))) as engagement_percentile
       FROM \`trustrails-faa3e.dol_data.plan_sponsors\`
       WHERE participants > 0
+    ),
+    plan_health_data AS (
+      SELECT
+        ack_id,
+        is_final_filing,
+        active_participants,
+        participants,
+        plan_effective_date,
+        business_code,
+        filing_status,
+        -- Calculate plan health indicators
+        SAFE_DIVIDE(active_participants, NULLIF(participants, 0)) as active_ratio,
+        -- Plan maturity score (older plans get higher scores)
+        CASE
+          WHEN plan_effective_date IS NOT NULL THEN
+            CASE
+              WHEN LENGTH(plan_effective_date) = 10 THEN -- Date format YYYY-MM-DD
+                GREATEST(0, DATE_DIFF(CURRENT_DATE(), PARSE_DATE('%Y-%m-%d', plan_effective_date), YEAR) / 50.0)
+              WHEN REGEXP_CONTAINS(plan_effective_date, r'^\d{3,4}$') THEN -- Numeric codes
+                0.5  -- Default maturity for coded dates
+              ELSE 0.3
+            END
+          ELSE 0.3  -- Default if no date
+        END as maturity_score
+      FROM \`trustrails-faa3e.dol_data.plan_sponsors\`
     ),
     priority_providers AS (
       SELECT
@@ -399,19 +427,30 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
         ELSE 0.5
       END as result_confidence,
       ROUND(
-        -- Size percentile score (0-35 points)
-        35 * COALESCE(pd.participant_percentile, 0) +
-        -- Asset percentile score (0-25 points)
-        25 * COALESCE(pd.asset_percentile, 0) +
-        -- Recency score (0-20 points)
-        20 * GREATEST(0, (ps.form_tax_year - 2014) / 10.0) +
-        -- Search match precision score (0-15 points)
+        -- Enhanced scoring with new DOL fields (total: 100 points)
+        -- Size percentile score (0-25 points, reduced from 35)
+        25 * COALESCE(pd.participant_percentile, 0) +
+        -- Asset percentile score (0-20 points, reduced from 25)
+        20 * COALESCE(pd.asset_percentile, 0) +
+        -- NEW: Active plan health bonus (0-15 points)
+        CASE
+          WHEN phd.is_final_filing = true THEN 0  -- Terminated plans get 0
+          WHEN phd.is_final_filing = false THEN 15  -- Active plans get full points
+          ELSE 8  -- Unknown status gets partial points
+        END +
+        -- NEW: Participant engagement score (0-10 points)
+        10 * COALESCE(pd.engagement_percentile, 0.5) +
+        -- NEW: Plan maturity score (0-5 points)
+        5 * COALESCE(phd.maturity_score, 0.3) +
+        -- Recency score (0-10 points, reduced from 20)
+        10 * GREATEST(0, (ps.form_tax_year - 2014) / 10.0) +
+        -- Search match precision score (0-10 points, reduced from 15)
         ${q ? `
         CASE
-          WHEN UPPER(ps.sponsor_name) = UPPER('${q.replace(/'/g, "''")}') THEN 15
-          WHEN UPPER(ps.sponsor_name) LIKE UPPER('${q.replace(/'/g, "''")}%') THEN 12
-          WHEN UPPER(ps.sponsor_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 8
-          WHEN UPPER(ps.plan_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 5
+          WHEN UPPER(ps.sponsor_name) = UPPER('${q.replace(/'/g, "''")}') THEN 10
+          WHEN UPPER(ps.sponsor_name) LIKE UPPER('${q.replace(/'/g, "''")}%') THEN 8
+          WHEN UPPER(ps.sponsor_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 5
+          WHEN UPPER(ps.plan_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 3
           ELSE 0
         END` : '0'} +
         -- Fortune company recognition bonus (0-5 points)
@@ -424,6 +463,7 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
       , 2) as mlRelevanceScore
     FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
     LEFT JOIN percentile_data pd ON ps.ack_id = pd.ack_id
+    LEFT JOIN plan_health_data phd ON ps.ack_id = phd.ack_id
     LEFT JOIN primary_contacts pc ON ps.ack_id = pc.ack_id
     ${whereClause}
     ORDER BY mlRelevanceScore DESC, participants DESC
@@ -433,9 +473,37 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
       SELECT
         ack_id,
         PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY participants) as participant_percentile,
-        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY total_assets) as asset_percentile
+        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY total_assets) as asset_percentile,
+        -- Enhanced: Active participant ratio for engagement scoring
+        PERCENT_RANK() OVER (PARTITION BY form_tax_year ORDER BY
+          SAFE_DIVIDE(active_participants, NULLIF(participants, 0))) as engagement_percentile
       FROM \`trustrails-faa3e.dol_data.plan_sponsors\`
       WHERE participants > 0
+    ),
+    plan_health_data AS (
+      SELECT
+        ack_id,
+        is_final_filing,
+        active_participants,
+        participants,
+        plan_effective_date,
+        business_code,
+        filing_status,
+        -- Calculate plan health indicators
+        SAFE_DIVIDE(active_participants, NULLIF(participants, 0)) as active_ratio,
+        -- Plan maturity score (older plans get higher scores)
+        CASE
+          WHEN plan_effective_date IS NOT NULL THEN
+            CASE
+              WHEN LENGTH(plan_effective_date) = 10 THEN -- Date format YYYY-MM-DD
+                GREATEST(0, DATE_DIFF(CURRENT_DATE(), PARSE_DATE('%Y-%m-%d', plan_effective_date), YEAR) / 50.0)
+              WHEN REGEXP_CONTAINS(plan_effective_date, r'^\d{3,4}$') THEN -- Numeric codes
+                0.5  -- Default maturity for coded dates
+              ELSE 0.3
+            END
+          ELSE 0.3  -- Default if no date
+        END as maturity_score
+      FROM \`trustrails-faa3e.dol_data.plan_sponsors\`
     )
     SELECT
       ps.ein_plan_sponsor as ein,
@@ -467,19 +535,30 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
         ELSE 0.5
       END as result_confidence,
       ROUND(
-        -- Size percentile score (0-35 points)
-        35 * COALESCE(pd.participant_percentile, 0) +
-        -- Asset percentile score (0-25 points)
-        25 * COALESCE(pd.asset_percentile, 0) +
-        -- Recency score (0-20 points)
-        20 * GREATEST(0, (ps.form_tax_year - 2014) / 10.0) +
-        -- Search match precision score (0-15 points)
+        -- Enhanced scoring with new DOL fields (total: 100 points)
+        -- Size percentile score (0-25 points, reduced from 35)
+        25 * COALESCE(pd.participant_percentile, 0) +
+        -- Asset percentile score (0-20 points, reduced from 25)
+        20 * COALESCE(pd.asset_percentile, 0) +
+        -- NEW: Active plan health bonus (0-15 points)
+        CASE
+          WHEN phd.is_final_filing = true THEN 0  -- Terminated plans get 0
+          WHEN phd.is_final_filing = false THEN 15  -- Active plans get full points
+          ELSE 8  -- Unknown status gets partial points
+        END +
+        -- NEW: Participant engagement score (0-10 points)
+        10 * COALESCE(pd.engagement_percentile, 0.5) +
+        -- NEW: Plan maturity score (0-5 points)
+        5 * COALESCE(phd.maturity_score, 0.3) +
+        -- Recency score (0-10 points, reduced from 20)
+        10 * GREATEST(0, (ps.form_tax_year - 2014) / 10.0) +
+        -- Search match precision score (0-10 points, reduced from 15)
         ${q ? `
         CASE
-          WHEN UPPER(ps.sponsor_name) = UPPER('${q.replace(/'/g, "''")}') THEN 15
-          WHEN UPPER(ps.sponsor_name) LIKE UPPER('${q.replace(/'/g, "''")}%') THEN 12
-          WHEN UPPER(ps.sponsor_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 8
-          WHEN UPPER(ps.plan_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 5
+          WHEN UPPER(ps.sponsor_name) = UPPER('${q.replace(/'/g, "''")}') THEN 10
+          WHEN UPPER(ps.sponsor_name) LIKE UPPER('${q.replace(/'/g, "''")}%') THEN 8
+          WHEN UPPER(ps.sponsor_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 5
+          WHEN UPPER(ps.plan_name) LIKE UPPER('%${q.replace(/'/g, "''")}%') THEN 3
           ELSE 0
         END` : '0'} +
         -- Fortune company recognition bonus (0-5 points)
@@ -492,6 +571,7 @@ async function searchBigQuery(params: any): Promise<{ results: any[]; totalCount
       , 2) as mlRelevanceScore
     FROM \`trustrails-faa3e.dol_data.plan_sponsors\` ps
     LEFT JOIN percentile_data pd ON ps.ack_id = pd.ack_id
+    LEFT JOIN plan_health_data phd ON ps.ack_id = phd.ack_id
     ${whereClause}
     ORDER BY mlRelevanceScore DESC, participants DESC
     LIMIT ? OFFSET ?
